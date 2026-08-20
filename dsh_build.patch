@@ -1,0 +1,181 @@
+diff --git a/scripts/build.ts b/scripts/build.ts
+index b6f12b0564..99c40ec714 100644
+--- a/scripts/build.ts
++++ b/scripts/build.ts
+@@ -11,6 +11,7 @@ import {
+   resolveClientBuildEnvironment,
+   writeClientBuildRecord,
+ } from './client-build-environment.ts'
++import { pnpmInvocation } from './pnpm-invocation.ts'
+ 
+ /** Run one package script through the package manager that invoked this build. */
+ function runScript(script: string, environment: NodeJS.ProcessEnv): void {
+@@ -18,7 +19,8 @@ function runScript(script: string, environment: NodeJS.ProcessEnv): void {
+   if (packageManager === undefined || packageManager === '') {
+     throw new Error('build: npm_execpath is unavailable; invoke the build through a package script')
+   }
+-  const result = spawnSync(process.execPath, [packageManager, 'run', script], {
++  const invocation = pnpmInvocation(packageManager)
++  const result = spawnSync(invocation.command, [...invocation.args, 'run', script], {
+     cwd: resolve(import.meta.dirname, '..'),
+     env: environment,
+     stdio: 'inherit',
+diff --git a/scripts/coverage-partitions.ts b/scripts/coverage-partitions.ts
+index d9abc06101..599f1e1115 100644
+--- a/scripts/coverage-partitions.ts
++++ b/scripts/coverage-partitions.ts
+@@ -2,6 +2,7 @@
+ import { spawn } from 'node:child_process'
+ import { lstat, mkdir, readdir, rm, unlink } from 'node:fs/promises'
+ import { join, relative, sep } from 'node:path'
++import { pnpmInvocation } from './pnpm-invocation.ts'
+ 
+ /** Environment variable selecting the number of instrumented coverage processes. */
+ export const COVERAGE_PARTITIONS_ENV = 'DSH_COVERAGE_PARTITIONS'
+@@ -16,8 +17,10 @@ export const COVERAGE_TEST_TIMEOUT_ENV = 'DSH_COVERAGE_TEST_TIMEOUT_MS'
+ export interface CoverageCommand {
+   /** Diagnostic identity. */
+   label: string
+-  /** Node arguments; the first argument is pnpm's JavaScript entrypoint. */
++  /** Arguments passed to the command. */
+   args: string[]
++  /** Executable used to run the command. */
++  command?: string
+   /** Environment additions for the child. */
+   env: Record<string, string | undefined>
+   /** Working directory for the child. */
+@@ -142,10 +145,12 @@ export class CoveragePartitionCoordinator {
+   private partitionCommand(index: number): CoverageCommand {
+     const blobPath = join(this.blobsRoot, `partition-${index}.json`)
+     const reportsDirectory = join(this.temporaryRoot, `coverage-${index}`)
++    const invocation = pnpmInvocation(this.pnpmEntrypoint)
+     return {
+       label: `partition ${index}/${this.partitions}`,
++      command: invocation.command,
+       args: [
+-        this.pnpmEntrypoint,
++        ...invocation.args,
+         'exec',
+         'vitest',
+         'run',
+@@ -169,10 +174,12 @@ export class CoveragePartitionCoordinator {
+   }
+ 
+   private mergeCommand(): CoverageCommand {
++    const invocation = pnpmInvocation(this.pnpmEntrypoint)
+     return {
+       label: 'merged coverage report',
++      command: invocation.command,
+       args: [
+-        this.pnpmEntrypoint,
++        ...invocation.args,
+         'exec',
+         'vitest',
+         `--merge-reports=${this.relativePath(this.blobsRoot)}`,
+@@ -213,7 +220,7 @@ function runCoverageCommand(command: CoverageCommand): Promise<CoverageCommandRe
+       if (value === undefined) Reflect.deleteProperty(env, name)
+       else env[name] = value
+     }
+-    const child = spawn(process.execPath, command.args, {
++    const child = spawn(command.command ?? process.execPath, command.args, {
+       cwd: command.cwd,
+       env,
+       stdio: ['ignore', 'pipe', 'pipe'],
+diff --git a/scripts/run-gates.ts b/scripts/run-gates.ts
+index ee021782f9..1de7c70e11 100644
+--- a/scripts/run-gates.ts
++++ b/scripts/run-gates.ts
+@@ -17,6 +17,7 @@ import {
+   coverageTestTimeoutArgs,
+   parseCoveragePartitionCount,
+ } from './coverage-partitions.ts'
++import { pnpmInvocation as resolvePnpmInvocation } from './pnpm-invocation.ts'
+ 
+ /** A named aggregate exposed by the gate runner. */
+ export type Mode =
+@@ -200,8 +201,8 @@ function pnpmInvocation(args: string[]): Pick<Gate, 'command' | 'args'> {
+   if (entrypoint === undefined || entrypoint === '') {
+     throw new Error('run-gates: npm_execpath is unavailable; invoke the runner through a pnpm package script.')
+   }
+-  // Windows cannot spawn the pnpm.cmd shim directly; the JavaScript entrypoint keeps every host shell-free.
+-  return { command: process.execPath, args: [entrypoint, ...args] }
++  const invocation = resolvePnpmInvocation(entrypoint)
++  return { command: invocation.command, args: [...invocation.args, ...args] }
+ }
+ 
+ /**
+diff --git a/scripts/run-web-snapshots.ts b/scripts/run-web-snapshots.ts
+index c73047085c..0a9129bb0c 100644
+--- a/scripts/run-web-snapshots.ts
++++ b/scripts/run-web-snapshots.ts
+@@ -1,5 +1,6 @@
+ /** Run serial browser owners before one bounded snapshot pool. */
+ import { spawn } from 'node:child_process'
++import { pnpmInvocation } from './pnpm-invocation.ts'
+ 
+ const serialFiles = [
+   'apps/web/tests/hmr-live.e2e.ts',
+@@ -15,7 +16,8 @@ if (pnpmEntrypoint === undefined || pnpmEntrypoint === '') {
+   throw new Error('parallel web snapshots must be invoked through a pnpm package script.')
+ }
+ 
+-const baseArgs = [pnpmEntrypoint, 'exec', 'vitest', 'run', '--config', 'vitest.web.config.ts']
++const invocation = pnpmInvocation(pnpmEntrypoint)
++const baseArgs = [...invocation.args, 'exec', 'vitest', 'run', '--config', 'vitest.web.config.ts']
+ let serialStatus = 0
+ for (const file of serialFiles) {
+   serialStatus = await run([...baseArgs, file])
+@@ -34,7 +36,7 @@ if (serialStatus === 0) {
+ 
+ function run(args: string[]): Promise<number> {
+   return new Promise((resolveRun, reject) => {
+-    const child = spawn(process.execPath, args, { stdio: 'inherit' })
++    const child = spawn(invocation.command, args, { stdio: 'inherit' })
+     child.once('error', reject)
+     child.once('exit', (exitCode, signalCode) => {
+       if (signalCode !== null) {
+diff --git a/scripts/pnpm-invocation.ts b/scripts/pnpm-invocation.ts
+new file mode 100644
+index 0000000000..3ff108910f
+--- /dev/null
++++ b/scripts/pnpm-invocation.ts
+@@ -0,0 +1,39 @@
++import { existsSync, readFileSync } from 'node:fs'
++
++/** The command and arguments needed to invoke pnpm without a shell. */
++export interface PnpmInvocation {
++  command: string
++  args: string[]
++}
++
++/** Resolve a package-manager entrypoint for a direct child-process spawn.
++ * @param entrypoint - Value supplied by `npm_execpath`.
++ * @returns The executable and arguments for the pnpm invocation.
++ */
++export function pnpmInvocation(entrypoint: string): PnpmInvocation {
++  if (isDirectExecutable(entrypoint)) return { command: entrypoint, args: [] }
++  return { command: process.execPath, args: [entrypoint] }
++}
++
++function isDirectExecutable(entrypoint: string): boolean {
++  if (!existsSync(entrypoint)) return false
++  const bytes = readFileSync(entrypoint).subarray(0, 4)
++  return isShebang(bytes) || isElf(bytes) || isWindowsExecutable(bytes) || isMachO(bytes)
++}
++
++function isShebang(bytes: Uint8Array): boolean {
++  return bytes[0] === 0x23 && bytes[1] === 0x21
++}
++
++function isElf(bytes: Uint8Array): boolean {
++  return bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46
++}
++
++function isWindowsExecutable(bytes: Uint8Array): boolean {
++  return bytes[0] === 0x4d && bytes[1] === 0x5a
++}
++
++function isMachO(bytes: Uint8Array): boolean {
++  const magic = (bytes[0] ?? 0) | ((bytes[1] ?? 0) << 8) | ((bytes[2] ?? 0) << 16) | ((bytes[3] ?? 0) << 24)
++  return magic === 0xfeedface || magic === 0xcefaedfe || magic === 0xfeedfacf || magic === 0xcffaedfe
++}

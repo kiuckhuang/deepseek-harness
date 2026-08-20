@@ -1,0 +1,210 @@
+diff --git a/packages/mcp/mcp-client/src/connection.ts b/packages/mcp/mcp-client/src/connection.ts
+index f452e3a81d..4cd97ebf35 100644
+--- a/packages/mcp/mcp-client/src/connection.ts
++++ b/packages/mcp/mcp-client/src/connection.ts
+@@ -126,6 +126,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
+     registrationFailure: 'contain',
+     serverName: config.serverName,
+     toolCallTimeoutMs: config.toolCallTimeoutMs,
++    // Streamable HTTP sessions can die server-side while the connection stays
++    // open; the bridge reports that per call and asks for a fresh generation.
++    reacquireClient: (lost) => recoverAfterSessionLoss(lost),
+   }
+   // The initial sync uses 'throw' when failOnStartupError is configured, so
+   // a registration conflict propagates to the startup-await path. Re-syncs
+@@ -190,6 +193,8 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
+   }
+ 
+   function scheduleReconnect(): void {
++    // A disposed plugin must never arm another retry from a late failure signal.
++    if (disposed) return
+     const lostEstablishedConnection = connectedAt !== undefined
+     if (!policy.enabled) {
+       const message = lostEstablishedConnection
+@@ -233,8 +238,10 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
+    * onclose-driven disconnect path. Never rejects.
+    *
+    * @param startup - Whether this is the plugin's activation attempt.
++   * @returns The attempted generation, so session-loss recovery can check
++   *   whether it became current (successful connect + initial sync).
+    */
+-  async function connectGeneration(startup: boolean): Promise<void> {
++  async function connectGeneration(startup: boolean): Promise<Client> {
+     const generation = new Client(
+       { name: 'dsh-mcp-client', version: '0.0.1' },
+       { capabilities: {} },
+@@ -273,7 +280,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
+       if (hasClosed()) {
+         attemptSettled = true
+         generationDown(generation)
+-        return
++        return generation
+       }
+       await enqueueSync(generation, startup ? startupOpts : opts)
+     } catch (error) {
+@@ -284,24 +291,71 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
+       try { await generation.close() } catch { /* transport already gone */ }
+       const quiesced = hasClosed() || await waitForClose(closed.promise)
+       attemptSettled = true
+-      if (!isCurrent(generation)) return
++      if (!isCurrent(generation)) return generation
+       if (!quiesced) {
+         client = undefined
+         clientClosed = undefined
+         ctx.logger.error(`${label}: failed generation did not close within ${GENERATION_CLOSE_TIMEOUT_MS}ms — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`)
+-        return
++        return generation
+       }
+       generationDown(generation)
+-      return
++      return generation
+     }
+     attemptSettled = true
+     if (hasClosed()) {
+       generationDown(generation)
+-      return
++      return generation
+     }
+-    if (!isCurrent(generation)) return
++    if (!isCurrent(generation)) return generation
+     connectedAt = Date.now()
+     if (failedAttempts > 0) ctx.logger.info(`${label}: reconnected and re-synced tools (attempt ${failedAttempts}/${policy.maxAttempts})`)
++    return generation
++  }
++
++  /** In-flight session-loss recovery shared by concurrent calls that fail on the poisoned generation. */
++  let sessionRecovery: Promise<Client | undefined> | undefined
++
++  /**
++   * Recover a generation whose server-side session was lost while the
++   * connection stayed open (Streamable HTTP session expiry). The SDK
++   * surfaces this as a per-request error and never resets its session, so
++   * without this hook the poisoned generation would fail every call until
++   * disposal. Tears down that generation, connects a fresh one, and returns
++   * it for a single retry of the failed call; undefined when no client is
++   * available to serve the retry.
++   *
++   * @param oldClient - The generation whose session was reported lost.
++   */
++  async function recoverAfterSessionLoss(oldClient: Client): Promise<Client | undefined> {
++    if (!isCurrent(oldClient)) {
++      // A racing caller already swapped the generation, or it never became
++      // current: serve a live established client, or join an in-flight recovery.
++      if (client !== undefined && connectedAt !== undefined) return client
++      return sessionRecovery ?? undefined
++    }
++    if (sessionRecovery !== undefined) return sessionRecovery
++    sessionRecovery = (async () => {
++      try {
++        ctx.logger.warn(`${label}: server-side session lost; re-initializing transport`)
++        // We are connecting now: a pending backoff retry would double-connect.
++        if (reconnectTimer !== undefined) {
++          clearTimeout(reconnectTimer)
++          reconnectTimer = undefined
++        }
++        client = undefined
++        clientClosed = undefined
++        const generation = await connectGeneration(false)
++        if (!isCurrent(generation)) {
++          // Disposed mid-recovery: the success path bailed without closing.
++          try { await generation.close() } catch { /* transport already gone */ }
++          return undefined
++        }
++        return generation
++      } finally {
++        sessionRecovery = undefined
++      }
++    })()
++    return sessionRecovery
+   }
+ 
+   /** The in-flight (or last settled) connection attempt; dispose awaits it for quiescence. */
+@@ -341,8 +395,11 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
+         }
+       }
+       // Quiesce, don't just request it: the in-flight attempt enqueues its
+-      // sync before settling, so awaiting both leaves `disposers` final.
++      // sync before settling, so awaiting both leaves `disposers` final. An
++      // in-flight session recovery connects yet another generation and must
++      // quiesce too before the final unregister pass.
+       await settling
++      if (sessionRecovery !== undefined) await sessionRecovery
+       await syncChain
+       for (const dispose of disposers.values()) dispose()
+       disposers = new Map()
+diff --git a/packages/mcp/mcp-client/src/tools.ts b/packages/mcp/mcp-client/src/tools.ts
+index 8c4780f71d..11d1d31eb4 100644
+--- a/packages/mcp/mcp-client/src/tools.ts
++++ b/packages/mcp/mcp-client/src/tools.ts
+@@ -31,6 +31,30 @@ export interface ToolBridgeOptions {
+   registrationFailure: 'contain' | 'throw'
+   serverName: string
+   toolCallTimeoutMs: number
++  /**
++   * Optional recovery hook for transports whose server-side session can be
++   * lost while the connection stays nominally open (Streamable HTTP session
++   * expiry). When a call fails with such an error, the bridge invokes this
++   * hook with the generation client; it must return a fresh connected client
++   * to retry against, or undefined when recovery is not possible.
++   */
++  reacquireClient?: (client: Client) => Promise<Client | undefined>
++}
++
++/**
++ * Whether an MCP transport error means the server no longer recognizes this
++ * client's session. Streamable HTTP servers answer with 404 (unknown or
++ * expired session) or 410; the SDK throws `StreamableHTTPError` carrying the
++ * HTTP status in `code`. Such a generation cannot be reused — the SDK keeps
++ * sending the stale session header — so the supervisor must re-initialize.
++ */
++function isSessionLostError(error: unknown): boolean {
++  if (typeof error !== 'object' || error === null) return false
++  const code = (error as { code?: unknown }).code
++  if (code !== 404 && code !== 410) return false
++  const rawMessage = (error as { message?: unknown }).message
++  const message = typeof rawMessage === 'string' ? rawMessage : ''
++  return /session|not found|expired|terminated|POSTing to endpoint/i.test(message)
+ }
+ 
+ /** State for one sync generation: the current set of disposers keyed by public name. */
+@@ -317,7 +341,8 @@ function createExecutor(
+     // string/number/null). Fallback to {} lets the MCP server produce a
+     // specific "missing required param" error the model can learn from.
+     const argsObj = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
+-    const result = await callToolUncached(client, rawName, argsObj, exec, opts)
++    const attempt = async (generation: Client) => {
++      const result = await callToolUncached(generation, rawName, argsObj, exec, opts)
+ 
+     // The SDK may return a legacy `toolResult` shape; normalize to content array.
+     if (!Array.isArray(result.content)) {
+@@ -351,12 +376,25 @@ function createExecutor(
+         ? { structuredContent: result.structuredContent as JsonValue }
+         : {},
+     }
+-    if (containsImage(content)) {
+-      const fallback: ContentBlock[] = [{ type: 'text', text: extractText(content, rawName) }]
+-      const projected = await prepareImageProjection(ctx, exec, content, rawName)
+-      projections.set(exec, { value, fallback, content: projected })
++      if (containsImage(content)) {
++        const fallback: ContentBlock[] = [{ type: 'text', text: extractText(content, rawName) }]
++        const projected = await prepareImageProjection(ctx, exec, content, rawName)
++        projections.set(exec, { value, fallback, content: projected })
++      }
++      return value
++    }
++    try {
++      return await attempt(client)
++    } catch (error) {
++      if (!isSessionLostError(error) || opts.reacquireClient === undefined) throw error
++      // The transport's server-side session is gone and the SDK never resets it;
++      // ask the supervisor for a fresh generation and retry this call exactly once.
++      ctx.logger.warn(`mcp-client(${opts.serverName}): server-side session lost during "${rawName}"; re-initializing and retrying`)
++      const replacement = await opts.reacquireClient(client)
++      if (replacement === undefined || replacement === client) throw error
++      if (exec.signal.aborted) throw error
++      return attempt(replacement)
+     }
+-    return value
+   }
+ }
+ 

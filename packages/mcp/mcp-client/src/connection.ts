@@ -126,6 +126,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     registrationFailure: 'contain',
     serverName: config.serverName,
     toolCallTimeoutMs: config.toolCallTimeoutMs,
+    // Streamable HTTP sessions can die server-side while the connection stays
+    // open; the bridge reports that per call and asks for a fresh generation.
+    reacquireClient: lost => recoverAfterSessionLoss(lost),
   }
   // The initial sync uses 'throw' when failOnStartupError is configured, so
   // a registration conflict propagates to the startup-await path. Re-syncs
@@ -190,6 +193,8 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   }
 
   function scheduleReconnect(): void {
+    // A disposed plugin must never arm another retry from a late failure signal.
+    if (disposed) return
     const lostEstablishedConnection = connectedAt !== undefined
     if (!policy.enabled) {
       const message = lostEstablishedConnection
@@ -233,8 +238,10 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
    * onclose-driven disconnect path. Never rejects.
    *
    * @param startup - Whether this is the plugin's activation attempt.
+   * @returns The attempted generation, so session-loss recovery can check
+   *   whether it became current (successful connect + initial sync).
    */
-  async function connectGeneration(startup: boolean): Promise<void> {
+  async function connectGeneration(startup: boolean): Promise<Client> {
     const generation = new Client(
       { name: 'dsh-mcp-client', version: '0.0.1' },
       { capabilities: {} },
@@ -273,7 +280,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       if (hasClosed()) {
         attemptSettled = true
         generationDown(generation)
-        return
+        return generation
       }
       await enqueueSync(generation, startup ? startupOpts : opts)
     } catch (error) {
@@ -284,24 +291,71 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       try { await generation.close() } catch { /* transport already gone */ }
       const quiesced = hasClosed() || await waitForClose(closed.promise)
       attemptSettled = true
-      if (!isCurrent(generation)) return
+      if (!isCurrent(generation)) return generation
       if (!quiesced) {
         client = undefined
         clientClosed = undefined
         ctx.logger.error(`${label}: failed generation did not close within ${GENERATION_CLOSE_TIMEOUT_MS}ms — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`)
-        return
+        return generation
       }
       generationDown(generation)
-      return
+      return generation
     }
     attemptSettled = true
     if (hasClosed()) {
       generationDown(generation)
-      return
+      return generation
     }
-    if (!isCurrent(generation)) return
+    if (!isCurrent(generation)) return generation
     connectedAt = Date.now()
     if (failedAttempts > 0) ctx.logger.info(`${label}: reconnected and re-synced tools (attempt ${failedAttempts}/${policy.maxAttempts})`)
+    return generation
+  }
+
+  /** In-flight session-loss recovery shared by concurrent calls that fail on the poisoned generation. */
+  let sessionRecovery: Promise<Client | undefined> | undefined
+
+  /**
+   * Recover a generation whose server-side session was lost while the
+   * connection stayed open (Streamable HTTP session expiry). The SDK
+   * surfaces this as a per-request error and never resets its session, so
+   * without this hook the poisoned generation would fail every call until
+   * disposal. Tears down that generation, connects a fresh one, and returns
+   * it for a single retry of the failed call; undefined when no client is
+   * available to serve the retry.
+   *
+   * @param oldClient - The generation whose session was reported lost.
+   */
+  async function recoverAfterSessionLoss(oldClient: Client): Promise<Client | undefined> {
+    if (!isCurrent(oldClient)) {
+      // A racing caller already swapped the generation, or it never became
+      // current: serve a live established client, or join an in-flight recovery.
+      if (client !== undefined && connectedAt !== undefined) return client
+      return sessionRecovery ?? undefined
+    }
+    if (sessionRecovery !== undefined) return sessionRecovery
+    sessionRecovery = (async () => {
+      try {
+        ctx.logger.warn(`${label}: server-side session lost; re-initializing transport`)
+        // We are connecting now: a pending backoff retry would double-connect.
+        if (reconnectTimer !== undefined) {
+          clearTimeout(reconnectTimer)
+          reconnectTimer = undefined
+        }
+        client = undefined
+        clientClosed = undefined
+        const generation = await connectGeneration(false)
+        if (!isCurrent(generation)) {
+          // Disposed mid-recovery: the success path bailed without closing.
+          try { await generation.close() } catch { /* transport already gone */ }
+          return undefined
+        }
+        return generation
+      } finally {
+        sessionRecovery = undefined
+      }
+    })()
+    return sessionRecovery
   }
 
   /** The in-flight (or last settled) connection attempt; dispose awaits it for quiescence. */
@@ -341,8 +395,11 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         }
       }
       // Quiesce, don't just request it: the in-flight attempt enqueues its
-      // sync before settling, so awaiting both leaves `disposers` final.
+      // sync before settling, so awaiting both leaves `disposers` final. An
+      // in-flight session recovery connects yet another generation and must
+      // quiesce too before the final unregister pass.
       await settling
+      if (sessionRecovery !== undefined) await sessionRecovery
       await syncChain
       for (const dispose of disposers.values()) dispose()
       disposers = new Map()

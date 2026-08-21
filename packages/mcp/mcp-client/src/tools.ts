@@ -32,6 +32,30 @@ export interface ToolBridgeOptions {
   registrationFailure: 'contain' | 'throw'
   serverName: string
   toolCallTimeoutMs: number
+  /**
+   * Optional recovery hook for transports whose server-side session can be
+   * lost while the connection stays nominally open (Streamable HTTP session
+   * expiry). When a call fails with such an error, the bridge invokes this
+   * hook with the generation client; it must return a fresh connected client
+   * to retry against, or undefined when recovery is not possible.
+   */
+  reacquireClient?: (client: Client) => Promise<Client | undefined>
+}
+
+/**
+ * Whether an MCP transport error means the server no longer recognizes this
+ * client's session. Streamable HTTP servers answer with 404 (unknown or
+ * expired session) or 410; the SDK throws `StreamableHTTPError` carrying the
+ * HTTP status in `code`. Such a generation cannot be reused — the SDK keeps
+ * sending the stale session header — so the supervisor must re-initialize.
+ */
+function isSessionLostError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const code = (error as { code?: unknown }).code
+  if (code !== 404 && code !== 410) return false
+  const rawMessage = (error as { message?: unknown }).message
+  const message = typeof rawMessage === 'string' ? rawMessage : ''
+  return /session|not found|expired|terminated|POSTing to endpoint/i.test(message)
 }
 
 /** State for one sync generation: the current set of disposers keyed by public name. */
@@ -318,46 +342,60 @@ function createExecutor(
     // string/number/null). Fallback to {} lets the MCP server produce a
     // specific "missing required param" error the model can learn from.
     const argsObj = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
-    const result = await callToolUncached(client, rawName, argsObj, exec, opts)
+    const attempt = async (generation: Client) => {
+      const result = await callToolUncached(generation, rawName, argsObj, exec, opts)
 
-    // The SDK may return a legacy `toolResult` shape; normalize to content array.
-    if (!Array.isArray(result.content)) {
-      const rendered: unknown = 'toolResult' in result
-        ? JSON.stringify(result.toolResult)
-        : '(no output)'
-      const text = typeof rendered === 'string' ? rendered : '(no output)'
-      if (result.isError === true) throw new Error(text)
-      return {
-        content: [{ type: 'text', text }],
+      // The SDK may return a legacy `toolResult` shape; normalize to content array.
+      if (!Array.isArray(result.content)) {
+        const rendered: unknown = 'toolResult' in result
+          ? JSON.stringify(result.toolResult)
+          : '(no output)'
+        const text = typeof rendered === 'string' ? rendered : '(no output)'
+        if (result.isError === true) throw new Error(text)
+        return {
+          content: [{ type: 'text', text }],
+          ...result.structuredContent !== undefined
+            ? { structuredContent: result.structuredContent as JsonValue }
+            : {},
+        }
+      }
+
+      // Trust boundary: the SDK's return type erases to `any[]` due to the
+      // union of CallToolResult | CompatibilityCallToolResult; extractText
+      // validates each element.
+      const content = result.content as unknown as JsonValue[]
+      const text = extractText(content, rawName)
+
+      // MCP isError → throw so ToolRuntime produces an isError result for the model.
+      if (result.isError === true) {
+        throw new Error(text)
+      }
+
+      const value: McpResult = {
+        content,
         ...result.structuredContent !== undefined
           ? { structuredContent: result.structuredContent as JsonValue }
           : {},
       }
+      if (containsImage(content)) {
+        const fallback: ContentBlock[] = [{ type: 'text', text: extractText(content, rawName) }]
+        const projected = await prepareImageProjection(ctx, exec, content, rawName)
+        projections.set(exec, { value, fallback, content: projected })
+      }
+      return value
     }
-
-    // Trust boundary: the SDK's return type erases to `any[]` due to the
-    // union of CallToolResult | CompatibilityCallToolResult; extractText
-    // validates each element.
-    const content = result.content as unknown as JsonValue[]
-    const text = extractText(content, rawName)
-
-    // MCP isError → throw so ToolRuntime produces an isError result for the model.
-    if (result.isError === true) {
-      throw new Error(text)
+    try {
+      return await attempt(client)
+    } catch (error) {
+      if (!isSessionLostError(error) || opts.reacquireClient === undefined) throw error
+      // The transport's server-side session is gone and the SDK never resets it;
+      // ask the supervisor for a fresh generation and retry this call exactly once.
+      ctx.logger.warn(`mcp-client(${opts.serverName}): server-side session lost during "${rawName}"; re-initializing and retrying`)
+      const replacement = await opts.reacquireClient(client)
+      if (replacement === undefined || replacement === client) throw error
+      if (exec.signal.aborted) throw error
+      return attempt(replacement)
     }
-
-    const value: McpResult = {
-      content,
-      ...result.structuredContent !== undefined
-        ? { structuredContent: result.structuredContent as JsonValue }
-        : {},
-    }
-    if (containsImage(content)) {
-      const fallback: ContentBlock[] = [{ type: 'text', text: extractText(content, rawName) }]
-      const projected = await prepareImageProjection(ctx, exec, content, rawName)
-      projections.set(exec, { value, fallback, content: projected })
-    }
-    return value
   }
 }
 

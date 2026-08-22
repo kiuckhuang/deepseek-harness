@@ -8,7 +8,7 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_DIR=${REPO_DIR:-$SCRIPT_DIR}
 REMOTE=${REMOTE:-upstream}
 UPSTREAM_URL=${UPSTREAM_URL:-https://github.com/deepseek-ai/deepseek-harness.git}
-RELEASE_REF=${RELEASE_REF:-dsh-v0.1.1-rc.2}
+RELEASE_REF=${RELEASE_REF:-latest}
 EXPECTED_COMMIT=${EXPECTED_COMMIT:-}
 MCP_PATCH=${MCP_PATCH:-$SCRIPT_DIR/dsh_mcp.patch}
 BUILD_PATCH=${BUILD_PATCH:-$SCRIPT_DIR/dsh_build.patch}
@@ -22,15 +22,16 @@ usage() {
     cat <<'EOF'
 Usage: mk_dsh.sh [--no-install] [--] [build command and arguments]
 
-Fetch RELEASE_REF from upstream, build a detached disposable worktree, and
-apply the configured patches in order. The current branch and its local edits
-are not changed. The temporary worktree is removed after the build.
+Fetch the newest upstream dsh-v* release tag, build a detached disposable
+worktree, and apply the configured patches in order. Set RELEASE_REF to pin a
+specific tag. The current branch and its local edits are not changed. The
+temporary worktree is removed after the build.
 
 Environment overrides:
   REPO_DIR          Repository to fetch from (default: script directory)
   REMOTE            Git remote (default: upstream)
   UPSTREAM_URL      URL used when REMOTE is absent
-  RELEASE_REF       Upstream tag to build (default: dsh-v0.1.1-rc.2)
+  RELEASE_REF       Upstream tag to build (default: latest dsh-v* tag)
   EXPECTED_COMMIT   Optional commit object required for RELEASE_REF
   MCP_PATCH         MCP patch path (default: ./dsh_mcp.patch)
   BUILD_PATCH       build patch path (default: ./dsh_build.patch)
@@ -40,6 +41,7 @@ Examples:
   ./mk_dsh.sh
   ./mk_dsh.sh --no-install -- pnpm run build:lib
   RELEASE_REF=dsh-v0.1.1-rc.2 ./mk_dsh.sh
+  EXPECTED_COMMIT=<commit-sha> ./mk_dsh.sh
 EOF
 }
 
@@ -115,6 +117,15 @@ fi
 
 [[ "$RELEASE_REF" != /* && "$RELEASE_REF" != *..* ]] \
     || die "RELEASE_REF must be a tag name, not a path or revision range: $RELEASE_REF"
+
+if [[ "$RELEASE_REF" = latest ]]; then
+    printf '==> finding latest dsh-v* release tag\n'
+    RELEASE_REF=$(git ls-remote --refs --tags --sort='version:refname' "$FETCH_SOURCE" 'refs/tags/dsh-v*' \
+        | awk -F/ 'NF >= 3 { tag = $NF; if (tag !~ /\^\{\}$/) latest = tag } END { if (latest != "") print latest }')
+    [[ -n "$RELEASE_REF" ]] || die "no dsh-v* release tags found on $FETCH_SOURCE"
+fi
+
+[[ "$RELEASE_REF" == dsh-v* ]] || die "RELEASE_REF must start with dsh-v: $RELEASE_REF"
 
 printf '==> fetching %s tag %s\n' "$FETCH_SOURCE" "$RELEASE_REF"
 git fetch --prune --force "$FETCH_SOURCE" \

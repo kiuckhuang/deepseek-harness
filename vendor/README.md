@@ -60,4 +60,4 @@ To update a vendored package from upstream:
 4. Update the version and commit hash in the manifest table.
 5. Run `pnpm install && pnpm run test && pnpm run build` at the repo root.
 
-The repository-level release builder is separate from this vendored-package procedure. [mk_dsh.sh](../mk_dsh.sh) fetches an immutable upstream release tag, applies the root patch layer in a disposable detached worktree, and builds without switching or stashing the caller's checkout. Its `RELEASE_REF` default is `dsh-v0.1.1-rc.2`; set `EXPECTED_COMMIT` when a deployment requires a specific release object.
+The repository-level release builder is separate from this vendored-package procedure. [mk_dsh.sh](../mk_dsh.sh) fetches the newest version-sorted `dsh-v*` release tag by default, applies the root patch layer in a disposable detached worktree, and builds without switching or stashing the caller's checkout. Run `make` for the same operation, `make web` to run `pnpm dsh web`, or `make help` to display the options. Set `RELEASE_REF` to pin a specific release, or set `EXPECTED_COMMIT` to require a specific commit object.

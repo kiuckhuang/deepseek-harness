@@ -10,9 +10,9 @@ English | [中文](2026-08-22-release-worktree-sync.zh.md)
 
 ## Decision
 
-`mk_dsh.sh` fetches the configured `RELEASE_REF` tag, resolves it to a commit, optionally verifies `EXPECTED_COMMIT`, and builds a detached Git worktree created from that commit. The default release is `dsh-v0.1.1-rc.2`. The script applies `dsh_mcp.patch` and the empty build patch in order; a patch is skipped only when it is empty or its reverse applies cleanly, and an incompatible non-empty patch fails before installation. The temporary worktree is removed on success or failure, while the caller's branch, index, worktree, and stash remain untouched.
+`mk_dsh.sh` fetches the newest version-sorted `dsh-v*` release tag by default, or the explicitly configured `RELEASE_REF` tag, resolves it to a commit, optionally verifies `EXPECTED_COMMIT`, and builds a detached Git worktree created from that commit. The script applies `dsh_mcp.patch` and the empty build patch in order; a patch is skipped only when it is empty or its reverse applies cleanly, and an incompatible non-empty patch fails before installation. The temporary worktree is removed on success or failure, while the caller's branch, index, worktree, and stash remain untouched.
 
-The worktree installs with `--frozen-lockfile` by default and runs `pnpm run build`, or an explicitly supplied command after `--`. `REPO_DIR`, `REMOTE`, `UPSTREAM_URL`, `RELEASE_REF`, `EXPECTED_COMMIT`, patch paths, `PNPM`, and `--no-install` provide explicit operational choices without introducing branch update or stash restoration modes.
+The worktree installs with `--frozen-lockfile` by default and runs `pnpm run build`, or an explicitly supplied command after `--`. `make` invokes the same default operation, `make web` runs `pnpm dsh web`, and `make help` delegates to the script help. `REPO_DIR`, `REMOTE`, `UPSTREAM_URL`, `RELEASE_REF`, `EXPECTED_COMMIT`, patch paths, `PNPM`, and `--no-install` provide explicit operational choices without introducing branch update or stash restoration modes.
 
 ## Alternatives considered
 
@@ -26,8 +26,8 @@ The worktree installs with `--frozen-lockfile` by default and runs `pnpm run bui
 
 A successful build produces artifacts only in the temporary worktree, so callers that need them must provide a custom command that copies or publishes them before the script exits. The script requires a tag reachable from the configured remote and does not merge arbitrary local commits into the release. Patch refreshes are deliberate: a non-empty patch that no longer applies fails with the target release named in the diagnostic.
 
-The release tag is fetched into the local tag namespace with force and prune semantics. `EXPECTED_COMMIT` can prevent a mutable remote tag from selecting an unexpected object. Installation and build failures no longer damage the active checkout, and the default path is deterministic for the pinned release.
+The selected release tag is fetched into the local tag namespace with force and prune semantics. `EXPECTED_COMMIT` can prevent a mutable remote tag from selecting an unexpected object. Installation and build failures no longer damage the active checkout. The default path follows the newest version-sorted `dsh-v*` tag; callers requiring reproducibility can set both `RELEASE_REF` and `EXPECTED_COMMIT`.
 
 ## Verification
 
-The requested tag resolves to commit `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`. The MCP patch applies forward to that release. The build patch fails as a forward patch and is already represented by an empty patch file because its change is upstream. `bash -n mk_dsh.sh` and `git diff --check` pass.
+At the time of this decision, the newest upstream tag is `dsh-v0.1.1-rc.2`, resolving to commit `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`. The MCP patch applies forward to that release. The build patch fails as a forward patch and is represented by an empty patch file because its change is upstream. `bash -n mk_dsh.sh` and `git diff --check` pass.

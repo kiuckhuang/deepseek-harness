@@ -11,6 +11,7 @@ UPSTREAM_URL=${UPSTREAM_URL:-https://github.com/deepseek-ai/deepseek-harness.git
 RELEASE_REF=${RELEASE_REF:-latest}
 EXPECTED_COMMIT=${EXPECTED_COMMIT:-}
 MCP_PATCH=${MCP_PATCH:-$SCRIPT_DIR/dsh_mcp.patch}
+SANDBOX_PATCH=${SANDBOX_PATCH:-$SCRIPT_DIR/dsh_sandbox.patch}
 BUILD_PATCH=${BUILD_PATCH:-$SCRIPT_DIR/dsh_build.patch}
 PNPM=${PNPM:-pnpm}
 INSTALL_DEPS=1
@@ -34,6 +35,7 @@ Environment overrides:
   RELEASE_REF       Upstream tag to build (default: latest dsh-v* tag)
   EXPECTED_COMMIT   Optional commit object required for RELEASE_REF
   MCP_PATCH         MCP patch path (default: ./dsh_mcp.patch)
+  SANDBOX_PATCH     sandbox patch path (default: ./dsh_sandbox.patch)
   BUILD_PATCH       build patch path (default: ./dsh_build.patch)
   PNPM              Package-manager command (default: pnpm)
 
@@ -82,8 +84,10 @@ while (($# > 0)); do
 done
 
 MCP_PATCH=$(absolute_path "$MCP_PATCH")
+SANDBOX_PATCH=$(absolute_path "$SANDBOX_PATCH")
 BUILD_PATCH=$(absolute_path "$BUILD_PATCH")
 [[ -f "$MCP_PATCH" ]] || die "MCP patch not found: $MCP_PATCH"
+[[ -f "$SANDBOX_PATCH" ]] || die "sandbox patch not found: $SANDBOX_PATCH"
 [[ -f "$BUILD_PATCH" ]] || die "build patch not found: $BUILD_PATCH"
 
 REPO_DIR=$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null) \
@@ -160,6 +164,7 @@ apply_patch_file() {
 }
 
 apply_patch_file "$MCP_PATCH"
+apply_patch_file "$SANDBOX_PATCH"
 apply_patch_file "$BUILD_PATCH"
 git -C "$WORKTREE" diff --check
 

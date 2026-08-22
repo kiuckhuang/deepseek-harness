@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-`mk_dsh.sh` 默认获取按版本排序的最新 `dsh-v*` release tag，也可以获取显式配置的 `RELEASE_REF` tag；随后将其解析为 commit，可选地校验 `EXPECTED_COMMIT`，并从该 commit 创建 detached Git worktree。脚本按顺序应用 `dsh_mcp.patch` 和空的构建补丁；仅当补丁为空或其逆向检查成功时才跳过补丁；非空且不兼容的补丁会在安装前失败。临时 worktree 在成功或失败时都会被删除，调用方的分支、索引、worktree 和 stash 保持不变。
+`mk_dsh.sh` 默认获取按版本排序的最新 `dsh-v*` release tag，也可以获取显式配置的 `RELEASE_REF` tag；随后将其解析为 commit，可选地校验 `EXPECTED_COMMIT`，并从该 commit 创建 detached Git worktree。脚本按顺序应用 `dsh_mcp.patch`、`dsh_sandbox.patch` 和空的构建补丁；仅当补丁为空或其逆向检查成功时才跳过补丁；非空且不兼容的补丁会在安装前失败。临时 worktree 在成功或失败时都会被删除，调用方的分支、索引、worktree 和 stash 保持不变。
 
 worktree 默认以 `--frozen-lockfile` 安装依赖并运行 `pnpm run build`；也可以在 `--` 后提供明确命令。`make` 执行相同的默认操作，`make web` 运行 `pnpm dsh web`，`make help` 委托脚本显示帮助。`REPO_DIR`、`REMOTE`、`UPSTREAM_URL`、`RELEASE_REF`、`EXPECTED_COMMIT`、补丁路径、`PNPM` 以及 `--no-install` 提供显式操作选择，但不再提供更新分支或恢复 stash 的模式。
 

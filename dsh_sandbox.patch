@@ -1,0 +1,41 @@
+diff --git a/packages/sandbox/sandbox/src/escalation.ts b/packages/sandbox/sandbox/src/escalation.ts
+index e0b9a2ce63..ab796020a7 100644
+--- a/packages/sandbox/sandbox/src/escalation.ts
++++ b/packages/sandbox/sandbox/src/escalation.ts
+@@ -156,6 +156,8 @@ export interface EscalationRequest {
+  */
+ export async function approveEscalation<A, C>(request: EscalationRequest, approval: EscalationApproval<A, C>): Promise<SandboxMode> {
+   const { requestedMode: mode, effectiveMode, justification, subject } = request
++  // A requested mode already covered by the effective policy is a harmless no-op.
++  if (mode === effectiveMode || (effectiveMode === 'danger-full-access' && (mode === 'read-only' || mode === 'workspace-write'))) return effectiveMode
+   // Strict widening is an EXECUTION check against the call's effective mode —
+   // deliberately not a schema constraint (the enum is the closed target
+   // vocabulary; the effective mode is per-call truth).
+diff --git a/packages/sandbox/sandbox/tests/escalation.spec.ts b/packages/sandbox/sandbox/tests/escalation.spec.ts
+index 15810d09d5..114389b4c4 100644
+--- a/packages/sandbox/sandbox/tests/escalation.spec.ts
++++ b/packages/sandbox/sandbox/tests/escalation.spec.ts
+@@ -81,12 +81,21 @@ describe('approveEscalation', () => {
+     expect(seen[0]?.reason).toBe('escalate sandbox to workspace-write: the user asked to write in the workspace')
+   })
+ 
++  it('a covered-mode request is a harmless no-op and never asks', async () => {
++    const seen: unknown[] = []
++    const spy = ingredients({ approver: approver('allowed-once', r => seen.push(r)) })
++    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'workspace-write' as never }), spy)).resolves.toBe('workspace-write')
++    await expect(approveEscalation(req({ requestedMode: 'danger-full-access', effectiveMode: 'danger-full-access' as never }), spy)).resolves.toBe('danger-full-access')
++    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'danger-full-access' as never }), spy)).resolves.toBe('danger-full-access')
++    expect(seen).toEqual([])
++  })
++
+   it('a non-widening request fails closed with its own text and never asks', async () => {
+     const seen: unknown[] = []
+     const spy = ingredients({ approver: approver('allowed-once', r => seen.push(r)) })
+-    await expect(approveEscalation(req({ requestedMode: 'read-only' }), spy))
++    await expect(approveEscalation(req({ requestedMode: 'unknown-mode' }), spy))
+       .rejects.toThrow(/not strictly wider than this call's current "read-only" mode/)
+-    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'danger-full-access' as never }), spy))
++    await expect(approveEscalation(req({ requestedMode: 'read-only', effectiveMode: 'workspace-write' as never }), spy))
+       .rejects.toThrow(/not strictly wider/)
+     expect(seen).toEqual([])
+   })

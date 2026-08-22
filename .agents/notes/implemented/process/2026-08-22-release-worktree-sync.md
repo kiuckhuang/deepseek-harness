@@ -10,7 +10,7 @@ English | [中文](2026-08-22-release-worktree-sync.zh.md)
 
 ## Decision
 
-`mk_dsh.sh` fetches the newest version-sorted `dsh-v*` release tag by default, or the explicitly configured `RELEASE_REF` tag, resolves it to a commit, optionally verifies `EXPECTED_COMMIT`, and builds a detached Git worktree created from that commit. The script applies `dsh_mcp.patch` and the empty build patch in order; a patch is skipped only when it is empty or its reverse applies cleanly, and an incompatible non-empty patch fails before installation. The temporary worktree is removed on success or failure, while the caller's branch, index, worktree, and stash remain untouched.
+`mk_dsh.sh` fetches the newest version-sorted `dsh-v*` release tag by default, or the explicitly configured `RELEASE_REF` tag, resolves it to a commit, optionally verifies `EXPECTED_COMMIT`, and builds a detached Git worktree created from that commit. The script applies `dsh_mcp.patch`, `dsh_sandbox.patch`, and the empty build patch in order; a patch is skipped only when it is empty or its reverse applies cleanly, and an incompatible non-empty patch fails before installation. The temporary worktree is removed on success or failure, while the caller's branch, index, worktree, and stash remain untouched.
 
 The worktree installs with `--frozen-lockfile` by default and runs `pnpm run build`, or an explicitly supplied command after `--`. `make` invokes the same default operation, `make web` runs `pnpm dsh web`, and `make help` delegates to the script help. `REPO_DIR`, `REMOTE`, `UPSTREAM_URL`, `RELEASE_REF`, `EXPECTED_COMMIT`, patch paths, `PNPM`, and `--no-install` provide explicit operational choices without introducing branch update or stash restoration modes.
 

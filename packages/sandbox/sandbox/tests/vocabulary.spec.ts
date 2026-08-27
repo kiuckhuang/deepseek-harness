@@ -17,11 +17,15 @@ describe('SandboxUnavailableError', () => {
     expect(error).toBeInstanceOf(Error)
   })
 
-  it('names the refused mode and the operator escape hatches in its message', () => {
+  it('names the refused mode and the operator escape hatches without cueing an escalation', () => {
     const error = new SandboxUnavailableError('workspace-write')
     expect(error.message).toContain('"workspace-write"')
     expect(error.message).toContain('danger-full-access')
     expect(error.message).not.toContain('Runner failure')
+    // A missing backend is host capability, not a policy denial. Pointing the
+    // model at `sandbox_permissions` here prompts the user on every confined
+    // call while repairing nothing.
+    expect(error.message).toContain('do not retry with sandbox_permissions')
   })
 
   it('carries the runner detail when the failure is discovered at execution time', () => {

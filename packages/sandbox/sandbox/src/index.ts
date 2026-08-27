@@ -127,15 +127,23 @@ export const SANDBOX_UNAVAILABLE = 'SANDBOX_UNAVAILABLE'
  * Thrown when {@link SandboxProvider.confine} cannot enforce the requested
  * mode. Carries {@link SANDBOX_UNAVAILABLE} through the structured error
  * channel.
+ *
+ * The message is model-visible and states that the failure is a host
+ * capability, not a file-policy denial. Escalation is named only as the
+ * confinement-dropping option the user chooses: a missing backend recurs on
+ * every confined call, so a per-call `sandbox_permissions` grant repairs
+ * nothing and would prompt the user for each one.
  */
 export class SandboxUnavailableError extends HarnessError {
   constructor(mode: ConfinedSandboxMode, detail?: string) {
     super(
       `sandbox mode "${mode}" is requested but no sandbox backend is usable on this host; `
-      + 'refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing '
-      + 'kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL '
-      + 'restricted-token runner can start (Windows) — otherwise switch the consumer to '
-      + 'danger-full-access.'
+      + 'refusing to run the command unconfined. This is a host-capability failure, not a '
+      + 'file-policy denial, so do not retry with sandbox_permissions — report it to the '
+      + 'user. The user can restore enforcement (install bubblewrap or use a '
+      + 'Landlock-enforcing kernel on Linux, sandbox-exec on macOS, or the ACL '
+      + 'restricted-token runner on Windows), or switch the permission preset to '
+      + 'danger-full-access, which drops file confinement instead of repairing it.'
       + (detail === undefined ? '' : ` Runner failure: ${detail}`),
       SANDBOX_UNAVAILABLE,
     )

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Build an upstream release plus the local patch layer in a disposable worktree.
-# The caller's branch, index, worktree, and stash are never changed.
+# Build an upstream release plus the local patch layers in a disposable worktree.
+# Layers are discovered by name, so adding one is dropping a file beside this
+# script: no edit here is needed. The caller's branch, index, worktree, and
+# stash are never changed.
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_DIR=${REPO_DIR:-$SCRIPT_DIR}
@@ -10,23 +12,32 @@ REMOTE=${REMOTE:-upstream}
 UPSTREAM_URL=${UPSTREAM_URL:-https://github.com/deepseek-ai/deepseek-harness.git}
 RELEASE_REF=${RELEASE_REF:-latest}
 EXPECTED_COMMIT=${EXPECTED_COMMIT:-}
-MCP_PATCH=${MCP_PATCH:-$SCRIPT_DIR/dsh_mcp.patch}
-SANDBOX_PATCH=${SANDBOX_PATCH:-$SCRIPT_DIR/dsh_sandbox.patch}
-BUILD_PATCH=${BUILD_PATCH:-$SCRIPT_DIR/dsh_build.patch}
+PATCH_DIR=${PATCH_DIR:-$SCRIPT_DIR}
+PATCH_GLOB=${PATCH_GLOB:-dsh_*.patch}
 PNPM=${PNPM:-pnpm}
 INSTALL_DEPS=1
 BUILD_ARGS=()
 WORKTREE=
 WORKTREE_CREATED=0
 
+# Layers named explicitly by $PATCHES or --patch, in the given order. Empty
+# selects discovery under $PATCH_DIR, which is sorted bytewise for reproducibility.
+EXPLICIT_PATCHES=()
+if [[ -n "${PATCHES:-}" ]]; then
+    read -r -a EXPLICIT_PATCHES <<<"$PATCHES"
+fi
+PATCH_LAYERS=()
+
 usage() {
     cat <<'EOF'
-Usage: mk_dsh.sh [--no-install] [--] [build command and arguments]
+Usage: mk_dsh.sh [--no-install] [--patch FILE]... [--] [build command and arguments]
 
 Fetch the newest upstream dsh-v* release tag, build a detached disposable
-worktree, and apply the configured patches in order. Set RELEASE_REF to pin a
-specific tag. The current branch and its local edits are not changed. The
-temporary worktree is removed after the build.
+worktree, and apply the patch layers in order. Layers are discovered as
+dsh_*.patch beside this script, so a new layer is just a new file; a layer is
+skipped when it is empty or already upstream, and an incompatible layer fails
+before installation. The current branch and its local edits are not changed.
+The temporary worktree is removed after the build.
 
 Environment overrides:
   REPO_DIR          Repository to fetch from (default: script directory)
@@ -34,16 +45,24 @@ Environment overrides:
   UPSTREAM_URL      URL used when REMOTE is absent
   RELEASE_REF       Upstream tag to build (default: latest dsh-v* tag)
   EXPECTED_COMMIT   Optional commit object required for RELEASE_REF
-  MCP_PATCH         MCP patch path (default: ./dsh_mcp.patch)
-  SANDBOX_PATCH     sandbox patch path (default: ./dsh_sandbox.patch)
-  BUILD_PATCH       build patch path (default: ./dsh_build.patch)
+  PATCH_DIR         Directory holding the layers (default: script directory)
+  PATCH_GLOB        Layer filename pattern, no slash (default: dsh_*.patch)
+  PATCHES           Whitespace-separated layer list; replaces discovery
   PNPM              Package-manager command (default: pnpm)
+
+Options:
+  --patch FILE      Add one layer, repeatable; replaces discovery. Order is
+                    preserved, so a layer that must follow another goes later.
+  --no-install      Skip the dependency install in the worktree
+  -h, --help        Show this help
 
 Examples:
   ./mk_dsh.sh
   ./mk_dsh.sh --no-install -- pnpm run build:lib
+  ./mk_dsh.sh --patch ./dsh_mcp.patch --patch ./dsh_sandbox.patch
   RELEASE_REF=dsh-v0.1.1-rc.2 ./mk_dsh.sh
   EXPECTED_COMMIT=<commit-sha> ./mk_dsh.sh
+  PATCHES="dsh_mcp.patch dsh_sandbox.patch dsh_build.patch" ./mk_dsh.sh
 EOF
 }
 
@@ -61,13 +80,43 @@ absolute_path() {
     fi
 }
 
+# Name the layers to apply: explicit list as given, else sorted discovery.
+resolve_patch_layers() {
+    if ((${#EXPLICIT_PATCHES[@]} > 0)); then
+        PATCH_LAYERS=("${EXPLICIT_PATCHES[@]}")
+    else
+        [[ "$PATCH_GLOB" != */* ]] \
+            || die "PATCH_GLOB must be a filename pattern without a slash: $PATCH_GLOB"
+        mapfile -d '' -t PATCH_LAYERS < <(
+            find "$PATCH_DIR" -maxdepth 1 -type f -name "$PATCH_GLOB" -print0 | LC_ALL=C sort -z
+        )
+        ((${#PATCH_LAYERS[@]} > 0)) \
+            || die "no patch layer matched ${PATCH_GLOB} under ${PATCH_DIR} (write one, or name layers with PATCHES/--patch)"
+    fi
+
+    local index
+    for index in "${!PATCH_LAYERS[@]}"; do
+        PATCH_LAYERS[index]=$(absolute_path "${PATCH_LAYERS[index]}")
+        [[ -f "${PATCH_LAYERS[index]}" ]] || die "patch layer not found: ${PATCH_LAYERS[index]}"
+    done
+}
+
 while (($# > 0)); do
     case $1 in
         --no-install)
             INSTALL_DEPS=0
             shift
             ;;
-        --help|-h)
+        --patch)
+            (($# >= 2)) || die "--patch requires a file argument"
+            EXPLICIT_PATCHES+=("$2")
+            shift 2
+            ;;
+        --patch=*)
+            EXPLICIT_PATCHES+=("${1#--patch=}")
+            shift
+            ;;
+        --help | -h)
             usage
             exit 0
             ;;
@@ -83,12 +132,11 @@ while (($# > 0)); do
     esac
 done
 
-MCP_PATCH=$(absolute_path "$MCP_PATCH")
-SANDBOX_PATCH=$(absolute_path "$SANDBOX_PATCH")
-BUILD_PATCH=$(absolute_path "$BUILD_PATCH")
-[[ -f "$MCP_PATCH" ]] || die "MCP patch not found: $MCP_PATCH"
-[[ -f "$SANDBOX_PATCH" ]] || die "sandbox patch not found: $SANDBOX_PATCH"
-[[ -f "$BUILD_PATCH" ]] || die "build patch not found: $BUILD_PATCH"
+resolve_patch_layers
+printf '==> %d patch layer(s):\n' "${#PATCH_LAYERS[@]}"
+for layer in "${PATCH_LAYERS[@]}"; do
+    printf '      %s\n' "$layer"
+done
 
 REPO_DIR=$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null) \
     || die "not a git repository: $REPO_DIR"
@@ -146,26 +194,34 @@ rmdir "$WORKTREE"
 git worktree add --detach "$WORKTREE" "$RELEASE_COMMIT" >/dev/null
 WORKTREE_CREATED=1
 
+APPLIED=0
+SKIPPED=0
+
 apply_patch_file() {
     local patch=$1
     [[ -s "$patch" ]] || {
         printf '[skip]  %s: empty patch (already provided upstream or intentionally retired)\n' "$patch"
+        SKIPPED=$((SKIPPED + 1))
         return
     }
 
     if git -C "$WORKTREE" apply --reverse --check "$patch" >/dev/null 2>&1; then
-        printf '[skip]  %s: already included in %s\n' "$patch" "$RELEASE_REF"
+        printf '[skip]  %s: already included in %s (retire the layer or keep it as a marker)\n' "$patch" "$RELEASE_REF"
+        SKIPPED=$((SKIPPED + 1))
     elif git -C "$WORKTREE" apply --check "$patch" >/dev/null 2>&1; then
         printf '[apply] %s\n' "$patch"
         git -C "$WORKTREE" apply "$patch"
+        APPLIED=$((APPLIED + 1))
     else
         die "patch is incompatible with release $RELEASE_REF: $patch (refresh or retire the patch)"
     fi
 }
 
-apply_patch_file "$MCP_PATCH"
-apply_patch_file "$SANDBOX_PATCH"
-apply_patch_file "$BUILD_PATCH"
+for layer in "${PATCH_LAYERS[@]}"; do
+    apply_patch_file "$layer"
+done
+printf '==> patch layers: %d applied, %d skipped of %d\n' \
+    "$APPLIED" "$SKIPPED" "${#PATCH_LAYERS[@]}"
 git -C "$WORKTREE" diff --check
 
 cd "$WORKTREE"

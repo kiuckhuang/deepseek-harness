@@ -132,7 +132,7 @@ kind: "package-reference"
 ##### 精确错误
 
 ```markdown
-sandbox mode "<mode>" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access.
+sandbox mode "<mode>" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. This is a host-capability failure, not a file-policy denial, so do not retry with sandbox_permissions — report it to the user. The user can restore enforcement (install bubblewrap or use a Landlock-enforcing kernel on Linux, sandbox-exec on macOS, or the ACL restricted-token runner on Windows), or switch the permission preset to danger-full-access, which drops file confinement instead of repairing it.
 ```
 
 #### Token 影响

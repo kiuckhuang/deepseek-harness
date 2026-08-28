@@ -1,33 +1,20 @@
-diff --git a/examples/acp-agent/tests/snapshots/missing-sandbox-runner/session.jsonl b/examples/acp-agent/tests/snapshots/missing-sandbox-runner/session.jsonl
-index 0fb9f29e2b..89defba623 100644
---- a/examples/acp-agent/tests/snapshots/missing-sandbox-runner/session.jsonl
-+++ b/examples/acp-agent/tests/snapshots/missing-sandbox-runner/session.jsonl
-@@ -15,7 +15,7 @@
- {"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"finish","reason":{"kind":"tool-calls"}}}}
- {"type":"assistant/message","data":{"turn":1,"step":1,"message":{"role":"assistant","content":[{"type":"tool-call","id":"missing-runner-foreground","name":"bash","arguments":"{\"command\":\"true\",\"description\":\"Exercise missing sandbox runner\"}"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-flash"},"id":"d588acd6-d0ab-43c5-9e18-67fe3f625e48"},"usage":{"inputTokens":1,"outputTokens":1}},"sourceEventSeqs":[9,10,11,12,13],"surfaceOp":"append"}
- {"type":"tool/call","data":{"turn":1,"step":1,"callId":"missing-runner-foreground","name":"bash","arguments":"{\"command\":\"true\",\"description\":\"Exercise missing sandbox runner\"}"}}
--{"type":"tool/result","data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"missing-runner-foreground"},"content":[{"type":"tool-result","toolCallId":"missing-runner-foreground","content":[{"type":"text","text":"Error: sandbox mode \"read-only\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access. Runner failure: Error: spawn {{cwd}}/.dsh-missing-sandbox-runner ENOENT"}],"isError":true}],"role":"user","id":"f7345e02-407b-483f-be7a-75a4fc1c37a7"},"error":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"sourceEventSeqs":[15],"surfaceOp":"append"}
-+{"type":"tool/result","data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"missing-runner-foreground"},"content":[{"type":"tool-result","toolCallId":"missing-runner-foreground","content":[{"type":"text","text":"Error: sandbox mode \"read-only\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. This is a host-capability failure, not a file-policy denial, so do not retry with sandbox_permissions — report it to the user. The user can restore enforcement (install bubblewrap or use a Landlock-enforcing kernel on Linux, sandbox-exec on macOS, or the ACL restricted-token runner on Windows), or switch the permission preset to danger-full-access, which drops file confinement instead of repairing it. Runner failure: Error: spawn {{cwd}}/.dsh-missing-sandbox-runner ENOENT"}],"isError":true}],"role":"user","id":"f7345e02-407b-483f-be7a-75a4fc1c37a7"},"error":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"sourceEventSeqs":[15],"surfaceOp":"append"}
- {"type":"step/end","data":{"turn":1,"step":1}}
- {"type":"step/start","data":{"turn":1,"step":2}}
- {"type":"assistant/chunk","data":{"turn":1,"step":2,"chunk":{"type":"block-start","index":0,"blockType":"tool-call"}}}
 diff --git a/packages/sandbox/sandbox/README.i18n.yaml b/packages/sandbox/sandbox/README.i18n.yaml
-index d92c0552ea..e06b1bc546 100644
+index 642edc050e..124ee4e570 100644
 --- a/packages/sandbox/sandbox/README.i18n.yaml
 +++ b/packages/sandbox/sandbox/README.i18n.yaml
 @@ -2,5 +2,5 @@
  # side as of the last confirmed-consistent state. Both languages carry equal authority;
  # after editing either side, bring the other along and re-record with:
  #   pnpm run verify-translation-pairing --write packages/sandbox/sandbox/README.md
--README.md: 3ebbffd623eee51dd6fcb588eec374e6d09be2f0
--README.zh.md: b9215b59d5ed5314275e91261c5541be1e5586fe
-+README.md: 7cc27687378edff78c9ba4852ffc98e54bec1099
-+README.zh.md: 4d0623f89c4e6f9c51d31adcccdffc8e054ac14f
+-README.md: 1e39fe31ad607a23a5a59f3e143b6823409126f2
+-README.zh.md: 15d200ab6af5c6ff80091163624f5535799c6723
++README.md: 83abe4eff04eb0831cbe319a8d24b63fca608d0c
++README.zh.md: c8a1e6716aa68fe25f733205b30083d027898cb0
 diff --git a/packages/sandbox/sandbox/README.md b/packages/sandbox/sandbox/README.md
-index 3ebbffd623..7cc2768737 100644
+index 1e39fe31ad..83abe4eff0 100644
 --- a/packages/sandbox/sandbox/README.md
 +++ b/packages/sandbox/sandbox/README.md
-@@ -23,7 +23,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
+@@ -132,7 +132,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
  ##### Exact error
  
  ```markdown
@@ -37,10 +24,10 @@ index 3ebbffd623..7cc2768737 100644
  
  #### Token effect
 diff --git a/packages/sandbox/sandbox/README.zh.md b/packages/sandbox/sandbox/README.zh.md
-index b9215b59d5..4d0623f89c 100644
+index 15d200ab6a..c8a1e6716a 100644
 --- a/packages/sandbox/sandbox/README.zh.md
 +++ b/packages/sandbox/sandbox/README.zh.md
-@@ -25,7 +25,7 @@
+@@ -132,7 +132,7 @@ kind: "package-reference"
  ##### 精确错误
  
  ```markdown
@@ -50,7 +37,7 @@ index b9215b59d5..4d0623f89c 100644
  
  #### Token 影响
 diff --git a/packages/sandbox/sandbox/src/escalation.ts b/packages/sandbox/sandbox/src/escalation.ts
-index e0b9a2ce63..ab796020a7 100644
+index e60b18daf6..6a0ceab757 100644
 --- a/packages/sandbox/sandbox/src/escalation.ts
 +++ b/packages/sandbox/sandbox/src/escalation.ts
 @@ -156,6 +156,8 @@ export interface EscalationRequest {
@@ -143,3 +130,16 @@ index caba42b2a7..e259d402d6 100644
    })
  
    it('carries the runner detail when the failure is discovered at execution time', () => {
+diff --git a/snapshots/session/missing-sandbox-runner/session.jsonl b/snapshots/session/missing-sandbox-runner/session.jsonl
+index 7ce28b4b74..ecad9cc734 100644
+--- a/snapshots/session/missing-sandbox-runner/session.jsonl
++++ b/snapshots/session/missing-sandbox-runner/session.jsonl
+@@ -18,7 +18,7 @@
+ {"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"finish","reason":{"kind":"tool-calls"}}}}
+ {"type":"assistant/message","data":{"turn":1,"step":1,"message":{"role":"assistant","content":[{"type":"tool-call","id":"missing-runner-foreground","name":"bash","arguments":"{\"command\":\"true\",\"description\":\"Exercise missing sandbox runner\"}"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-flash"},"id":"{{message:3}}"},"usage":{"inputTokens":1,"outputTokens":1}},"sourceEventSeqs":[12,13,14,15,16],"surfaceOp":"append"}
+ {"type":"tool/call","data":{"turn":1,"step":1,"callId":"missing-runner-foreground","name":"bash","arguments":"{\"command\":\"true\",\"description\":\"Exercise missing sandbox runner\"}"}}
+-{"type":"tool/result","data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"missing-runner-foreground"},"content":[{"type":"tool-result","toolCallId":"missing-runner-foreground","content":[{"type":"text","text":"Error: sandbox mode \"read-only\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access. Runner failure: Error: spawn {{cwd}}/.dsh-missing-sandbox-runner ENOENT"}],"isError":true}],"role":"user","id":"{{message:4}}"},"error":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"sourceEventSeqs":[18],"surfaceOp":"append"}
++{"type":"tool/result","data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"missing-runner-foreground"},"content":[{"type":"tool-result","toolCallId":"missing-runner-foreground","content":[{"type":"text","text":"Error: sandbox mode \"read-only\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. This is a host-capability failure, not a file-policy denial, so do not retry with sandbox_permissions — report it to the user. The user can restore enforcement (install bubblewrap or use a Landlock-enforcing kernel on Linux, sandbox-exec on macOS, or the ACL restricted-token runner on Windows), or switch the permission preset to danger-full-access, which drops file confinement instead of repairing it. Runner failure: Error: spawn {{cwd}}/.dsh-missing-sandbox-runner ENOENT"}],"isError":true}],"role":"user","id":"{{message:4}}"},"error":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"sourceEventSeqs":[18],"surfaceOp":"append"}
+ {"type":"step/end","data":{"turn":1,"step":1}}
+ {"type":"step/start","data":{"turn":1,"step":2}}
+ {"type":"assistant/chunk","data":{"turn":1,"step":2,"chunk":{"type":"block-start","index":0,"blockType":"tool-call"}}}

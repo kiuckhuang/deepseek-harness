@@ -1,5 +1,5 @@
 diff --git a/packages/mcp/mcp-client/src/connection.ts b/packages/mcp/mcp-client/src/connection.ts
-index f452e3a81d..4cd97ebf35 100644
+index f452e3a81d..b06256e3ec 100644
 --- a/packages/mcp/mcp-client/src/connection.ts
 +++ b/packages/mcp/mcp-client/src/connection.ts
 @@ -126,6 +126,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
@@ -8,7 +8,7 @@ index f452e3a81d..4cd97ebf35 100644
      toolCallTimeoutMs: config.toolCallTimeoutMs,
 +    // Streamable HTTP sessions can die server-side while the connection stays
 +    // open; the bridge reports that per call and asks for a fresh generation.
-+    reacquireClient: (lost) => recoverAfterSessionLoss(lost),
++    reacquireClient: lost => recoverAfterSessionLoss(lost),
    }
    // The initial sync uses 'throw' when failOnStartupError is configured, so
    // a registration conflict propagates to the startup-await path. Re-syncs
@@ -133,7 +133,7 @@ index f452e3a81d..4cd97ebf35 100644
        for (const dispose of disposers.values()) dispose()
        disposers = new Map()
 diff --git a/packages/mcp/mcp-client/src/tools.ts b/packages/mcp/mcp-client/src/tools.ts
-index 8c4780f71d..11d1d31eb4 100644
+index 4c6ab40fbd..eb7e4de2b0 100644
 --- a/packages/mcp/mcp-client/src/tools.ts
 +++ b/packages/mcp/mcp-client/src/tools.ts
 @@ -31,6 +31,30 @@ export interface ToolBridgeOptions {
@@ -167,31 +167,85 @@ index 8c4780f71d..11d1d31eb4 100644
  }
  
  /** State for one sync generation: the current set of disposers keyed by public name. */
-@@ -317,7 +341,8 @@ function createExecutor(
+@@ -317,46 +341,60 @@ function createExecutor(
      // string/number/null). Fallback to {} lets the MCP server produce a
      // specific "missing required param" error the model can learn from.
      const argsObj = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
 -    const result = await callToolUncached(client, rawName, argsObj, exec, opts)
+-
+-    // The SDK may return a legacy `toolResult` shape; normalize to content array.
+-    if (!Array.isArray(result.content)) {
+-      const rendered: unknown = 'toolResult' in result
+-        ? JSON.stringify(result.toolResult)
+-        : '(no output)'
+-      const text = typeof rendered === 'string' ? rendered : '(no output)'
+-      if (result.isError === true) throw new Error(text)
+-      return {
+-        content: [{ type: 'text', text }],
+-        ...result.structuredContent !== undefined
+-          ? { structuredContent: result.structuredContent as JsonValue }
+-          : {},
 +    const attempt = async (generation: Client) => {
 +      const result = await callToolUncached(generation, rawName, argsObj, exec, opts)
++
++      // The SDK may return a legacy `toolResult` shape; normalize to content array.
++      if (!Array.isArray(result.content)) {
++        const rendered: unknown = 'toolResult' in result
++          ? JSON.stringify(result.toolResult)
++          : '(no output)'
++        const text = typeof rendered === 'string' ? rendered : '(no output)'
++        if (result.isError === true) throw new Error(text)
++        return {
++          content: [{ type: 'text', text }],
++          ...result.structuredContent !== undefined
++            ? { structuredContent: result.structuredContent as JsonValue }
++            : {},
++        }
+       }
+-    }
  
-     // The SDK may return a legacy `toolResult` shape; normalize to content array.
-     if (!Array.isArray(result.content)) {
-@@ -351,12 +376,25 @@ function createExecutor(
-         ? { structuredContent: result.structuredContent as JsonValue }
-         : {},
-     }
--    if (containsImage(content)) {
--      const fallback: ContentBlock[] = [{ type: 'text', text: extractText(content, rawName) }]
--      const projected = await prepareImageProjection(ctx, exec, content, rawName)
--      projections.set(exec, { value, fallback, content: projected })
+-    // Trust boundary: the SDK's return type erases to `any[]` due to the
+-    // union of CallToolResult | CompatibilityCallToolResult; extractText
+-    // validates each element.
+-    const content = result.content as unknown as JsonValue[]
+-    const text = extractText(content, rawName)
++      // Trust boundary: the SDK's return type erases to `any[]` due to the
++      // union of CallToolResult | CompatibilityCallToolResult; extractText
++      // validates each element.
++      const content = result.content as unknown as JsonValue[]
++      const text = extractText(content, rawName)
+ 
+-    // MCP isError → throw so ToolRuntime produces an isError result for the model.
+-    if (result.isError === true) {
+-      throw new Error(text)
+-    }
++      // MCP isError → throw so ToolRuntime produces an isError result for the model.
++      if (result.isError === true) {
++        throw new Error(text)
++      }
+ 
+-    const value: McpResult = {
+-      content,
+-      ...result.structuredContent !== undefined
+-        ? { structuredContent: result.structuredContent as JsonValue }
+-        : {},
++      const value: McpResult = {
++        content,
++        ...result.structuredContent !== undefined
++          ? { structuredContent: result.structuredContent as JsonValue }
++          : {},
++      }
 +      if (containsImage(content)) {
 +        const fallback: ContentBlock[] = [{ type: 'text', text: extractText(content, rawName) }]
 +        const projected = await prepareImageProjection(ctx, exec, content, rawName)
 +        projections.set(exec, { value, fallback, content: projected })
 +      }
 +      return value
-+    }
+     }
+-    if (containsImage(content)) {
+-      const fallback: ContentBlock[] = [{ type: 'text', text: extractText(content, rawName) }]
+-      const projected = await prepareImageProjection(ctx, exec, content, rawName)
+-      projections.set(exec, { value, fallback, content: projected })
 +    try {
 +      return await attempt(client)
 +    } catch (error) {

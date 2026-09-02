@@ -133,10 +133,10 @@ index f452e3a81d..b06256e3ec 100644
        for (const dispose of disposers.values()) dispose()
        disposers = new Map()
 diff --git a/packages/mcp/mcp-client/src/tools.ts b/packages/mcp/mcp-client/src/tools.ts
-index 4c6ab40fbd..eb7e4de2b0 100644
+index a580fd0c84..cf8e02c07c 100644
 --- a/packages/mcp/mcp-client/src/tools.ts
 +++ b/packages/mcp/mcp-client/src/tools.ts
-@@ -31,6 +31,30 @@ export interface ToolBridgeOptions {
+@@ -32,6 +32,30 @@ export interface ToolBridgeOptions {
    registrationFailure: 'contain' | 'throw'
    serverName: string
    toolCallTimeoutMs: number
@@ -167,7 +167,7 @@ index 4c6ab40fbd..eb7e4de2b0 100644
  }
  
  /** State for one sync generation: the current set of disposers keyed by public name. */
-@@ -317,46 +341,60 @@ function createExecutor(
+@@ -318,46 +342,60 @@ function createExecutor(
      // string/number/null). Fallback to {} lets the MCP server produce a
      // specific "missing required param" error the model can learn from.
      const argsObj = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>

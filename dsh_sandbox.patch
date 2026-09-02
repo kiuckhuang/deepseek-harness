@@ -1,17 +1,17 @@
 diff --git a/packages/sandbox/sandbox/README.i18n.yaml b/packages/sandbox/sandbox/README.i18n.yaml
-index 642edc050e..124ee4e570 100644
+index 3bc40e8804..d49fdfdc21 100644
 --- a/packages/sandbox/sandbox/README.i18n.yaml
 +++ b/packages/sandbox/sandbox/README.i18n.yaml
 @@ -2,5 +2,5 @@
  # side as of the last confirmed-consistent state. Both languages carry equal authority;
  # after editing either side, bring the other along and re-record with:
  #   pnpm run verify-translation-pairing --write packages/sandbox/sandbox/README.md
--README.md: 1e39fe31ad607a23a5a59f3e143b6823409126f2
--README.zh.md: 15d200ab6af5c6ff80091163624f5535799c6723
-+README.md: 83abe4eff04eb0831cbe319a8d24b63fca608d0c
-+README.zh.md: c8a1e6716aa68fe25f733205b30083d027898cb0
+-README.md: 764ebd4c0de4286712006dbf37dc58a59351835a
+-README.zh.md: 05dc954717374f4e02c54b2b072b0f5b3acbf48c
++README.md: 23035da0b93681726e14a0c7db44c3ad5c1f6864
++README.zh.md: efdb9ed28e77f4d9b51c68e27ead74ff8cf39db4
 diff --git a/packages/sandbox/sandbox/README.md b/packages/sandbox/sandbox/README.md
-index 1e39fe31ad..83abe4eff0 100644
+index 764ebd4c0d..23035da0b9 100644
 --- a/packages/sandbox/sandbox/README.md
 +++ b/packages/sandbox/sandbox/README.md
 @@ -132,7 +132,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
@@ -24,7 +24,7 @@ index 1e39fe31ad..83abe4eff0 100644
  
  #### Token effect
 diff --git a/packages/sandbox/sandbox/README.zh.md b/packages/sandbox/sandbox/README.zh.md
-index 15d200ab6a..c8a1e6716a 100644
+index 05dc954717..efdb9ed28e 100644
 --- a/packages/sandbox/sandbox/README.zh.md
 +++ b/packages/sandbox/sandbox/README.zh.md
 @@ -132,7 +132,7 @@ kind: "package-reference"
@@ -37,7 +37,7 @@ index 15d200ab6a..c8a1e6716a 100644
  
  #### Token 影响
 diff --git a/packages/sandbox/sandbox/src/escalation.ts b/packages/sandbox/sandbox/src/escalation.ts
-index e60b18daf6..6a0ceab757 100644
+index 5cc180fe2b..ff54ba7c84 100644
 --- a/packages/sandbox/sandbox/src/escalation.ts
 +++ b/packages/sandbox/sandbox/src/escalation.ts
 @@ -156,6 +156,8 @@ export interface EscalationRequest {

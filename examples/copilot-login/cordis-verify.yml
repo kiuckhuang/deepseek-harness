@@ -1,0 +1,13 @@
+# The verify composition: the real user settings document (`~/.dsh/settings.yaml`)
+# supplies the routes, the default DSH home supplies the credential store, and
+# the LLM service carries the live route registration the request then selects.
+- id: llm
+  name: '@deepseek-ai/dsh-llm'
+- id: settings
+  name: '@deepseek-ai/dsh-settings-file'
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+- id: authorization
+  name: '@deepseek-ai/dsh-authorization'
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'

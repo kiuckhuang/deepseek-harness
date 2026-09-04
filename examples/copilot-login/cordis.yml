@@ -1,0 +1,13 @@
+# Composition for the pi-ai provider sign-in tool: the authorization seam (no
+# shipped profile mounts it yet), the file-backed credential store the grants
+# land in, and the dormant pi-ai adapter that registers one login flow per
+# installed catalog provider the moment the authorization service exists. The
+# adapter declares `inject: ['llm']`, so the LLM service must be mounted too.
+- id: llm
+  name: '@deepseek-ai/dsh-llm'
+- id: authorization
+  name: '@deepseek-ai/dsh-authorization'
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'

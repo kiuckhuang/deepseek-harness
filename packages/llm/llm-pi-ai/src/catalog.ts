@@ -125,6 +125,19 @@ const MAX_TOKENS_FIELD_GATE: Record<PiAiMaxTokensField, true> = {
 /** The output-cap field spellings a profile may name. */
 export const MAX_TOKENS_FIELDS = Object.keys(MAX_TOKENS_FIELD_GATE) as readonly PiAiMaxTokensField[]
 
+/** The thinking-token-budget field spellings pi-ai accepts. */
+export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['thinkingTokenBudgetField']>
+
+/** Drift gate over {@link PiAiThinkingTokenBudgetField}; a new upstream spelling fails compilation until named. */
+const THINKING_TOKEN_BUDGET_FIELD_GATE: Record<PiAiThinkingTokenBudgetField, true> = {
+  thinking_token_budget: true,
+  thinking_budget: true,
+  thinking_budget_tokens: true,
+}
+
+/** The thinking-token-budget field spellings a profile may name. */
+export const THINKING_TOKEN_BUDGET_FIELDS = Object.keys(THINKING_TOKEN_BUDGET_FIELD_GATE) as readonly PiAiThinkingTokenBudgetField[]
+
 /** The prompt-cache marker conventions pi-ai accepts. */
 export type PiAiCacheControlFormat = NonNullable<OpenAICompletionsCompat['cacheControlFormat']>
 
@@ -143,6 +156,7 @@ export type PiAiChatTemplateVar = Extract<ChatTemplateKwargValue, { $var: string
 const CHAT_TEMPLATE_VAR_GATE: Record<PiAiChatTemplateVar, true> = {
   'thinking.enabled': true,
   'thinking.effort': true,
+  'thinking.budget': true,
 }
 
 /** The request-state placeholders a profile may name. */
@@ -229,6 +243,7 @@ const COMPLETIONS_COMPAT_GATE = {
   chatTemplateKwargs: 'offer',
   chatTemplateArgs: 'offer',
   supportsThinkingTokenBudget: 'offer',
+  thinkingTokenBudgetField: 'offer',
   supportsStrictMode: 'offer',
   cacheControlFormat: 'offer',
   supportsLongCacheRetention: 'offer',
@@ -239,6 +254,7 @@ const COMPLETIONS_COMPAT_GATE = {
   sendSessionAffinityHeaders: 'withhold',
   deferredToolsMode: 'withhold',
   sessionAffinityFormat: 'withhold',
+  vllmPriority: 'withhold',
 } as const satisfies Record<keyof OpenAICompletionsCompat, CompatDisposition>
 
 /** Disposition of every `OpenAIResponsesCompat` field; a drift gate like the one above. */
@@ -246,6 +262,7 @@ const RESPONSES_COMPAT_GATE = {
   supportsDeveloperRole: 'offer',
   supportsStrictMode: 'offer',
   supportsLongCacheRetention: 'offer',
+  supportsMaxOutputTokens: 'offer',
   sessionAffinityFormat: 'withhold',
   supportsOpenAIGrammarTools: 'withhold',
   supportsAdditionalTools: 'withhold',
@@ -262,8 +279,10 @@ const ANTHROPIC_COMPAT_GATE = {
   forceAdaptiveThinking: 'offer',
   allowEmptySignature: 'offer',
   supportsStrictTools: 'offer',
+  supportsMidConvoEffort: 'offer',
   sendSessionAffinityHeaders: 'withhold',
   supportsToolReferences: 'withhold',
+  allowedFallbackModels: 'withhold',
 } as const satisfies Record<keyof AnthropicMessagesCompat, CompatDisposition>
 
 /** Disposition of every `BedrockCompat` field; a drift gate like the one above. */
@@ -380,6 +399,12 @@ export interface PiAiCompatProfile {
   /** Whether the endpoint accepts `thinking_token_budget` to cap vLLM reasoning; `openai-completions`. */
   supportsThinkingTokenBudget?: boolean
   /**
+   * Which request field carries the thinking-token budget; `openai-completions`.
+   * `thinking_token_budget` is vLLM, `thinking_budget` is Qwen/DashScope/SGLang,
+   * `thinking_budget_tokens` is llama.cpp. Off unless stated, like upstream.
+   */
+  thinkingTokenBudgetField?: PiAiThinkingTokenBudgetField
+  /**
    * Whether the endpoint accepts `strict` in tool definitions;
    * `openai-completions`, the three Responses protocols, `bedrock-converse-stream`.
    */
@@ -403,6 +428,10 @@ export interface PiAiCompatProfile {
   allowEmptySignature?: boolean
   /** Whether the endpoint accepts Anthropic strict tool schemas; `anthropic-messages`. */
   supportsStrictTools?: boolean
+  /** Whether the endpoint accepts `thinking` on mid-conversation assistant turns; `anthropic-messages`. */
+  supportsMidConvoEffort?: boolean
+  /** Whether the Responses protocols accept the `max_output_tokens` request field. */
+  supportsMaxOutputTokens?: boolean
 }
 
 /** Compile-time constraint that `T` is `never`. */

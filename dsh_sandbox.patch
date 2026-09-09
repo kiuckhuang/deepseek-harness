@@ -1,17 +1,17 @@
 diff --git a/packages/sandbox/sandbox/README.i18n.yaml b/packages/sandbox/sandbox/README.i18n.yaml
-index 3bc40e8804..d49fdfdc21 100644
+index f862198917..9572b6c70d 100644
 --- a/packages/sandbox/sandbox/README.i18n.yaml
 +++ b/packages/sandbox/sandbox/README.i18n.yaml
 @@ -2,5 +2,5 @@
  # side as of the last confirmed-consistent state. Both languages carry equal authority;
  # after editing either side, bring the other along and re-record with:
  #   pnpm run verify-translation-pairing --write packages/sandbox/sandbox/README.md
--README.md: 764ebd4c0de4286712006dbf37dc58a59351835a
--README.zh.md: 05dc954717374f4e02c54b2b072b0f5b3acbf48c
-+README.md: 23035da0b93681726e14a0c7db44c3ad5c1f6864
-+README.zh.md: efdb9ed28e77f4d9b51c68e27ead74ff8cf39db4
+-README.md: b80e923e3dc6d5fd95f79546cdfa39a9ef82055f
+-README.zh.md: 9d80a3621be0533bf31294702da7f6b9c9292ae2
++README.md: 9cc3925fb8e1d8869b981fbc721306dcd8937676
++README.zh.md: ce990acba9b891e15fe958f33207fc787b12972b
 diff --git a/packages/sandbox/sandbox/README.md b/packages/sandbox/sandbox/README.md
-index 764ebd4c0d..23035da0b9 100644
+index b80e923e3d..9cc3925fb8 100644
 --- a/packages/sandbox/sandbox/README.md
 +++ b/packages/sandbox/sandbox/README.md
 @@ -132,7 +132,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
@@ -24,7 +24,7 @@ index 764ebd4c0d..23035da0b9 100644
  
  #### Token effect
 diff --git a/packages/sandbox/sandbox/README.zh.md b/packages/sandbox/sandbox/README.zh.md
-index 05dc954717..efdb9ed28e 100644
+index 9d80a3621b..ce990acba9 100644
 --- a/packages/sandbox/sandbox/README.zh.md
 +++ b/packages/sandbox/sandbox/README.zh.md
 @@ -132,7 +132,7 @@ kind: "package-reference"
@@ -143,3 +143,16 @@ index fdded5ce32..651691c23c 100644
  {"type":"step/end","data":{"turn":1,"step":1}}
  {"type":"step/start","data":{"turn":1,"step":2}}
  {"type":"assistant/message","data":{"turn":1,"step":2,"message":{"role":"assistant","content":[{"type":"tool-call","id":"missing-runner-output","name":"job_output","arguments":"{\"job_id\":\"bash-1\",\"wait\":true}"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-flash"},"id":"{{message:5}}"},"usage":{"inputTokens":1,"outputTokens":1},"stream":[{"type":"chunk","time":1788233506553,"chunk":{"type":"block-start","index":0,"blockType":"tool-call"}},{"type":"tool-call-chunks","time0":1788233506553,"index":0,"dt":[],"id":"missing-runner-output","name":"job_output","args":["{\"job_id\":\"bash-1\",\"wait\":true}"]},{"type":"chunk","time":1788233506554,"chunk":{"type":"block-end","index":0,"block":{"type":"tool-call","id":"missing-runner-output","name":"job_output","arguments":"{\"job_id\":\"bash-1\",\"wait\":true}"}}},{"type":"chunk","time":1788233506554,"chunk":{"type":"usage","usage":{"inputTokens":1,"outputTokens":1}}},{"type":"chunk","time":1788233506554,"chunk":{"type":"finish","reason":{"kind":"tool-calls"}}}]},"surfaceOp":"append"}
+diff --git a/snapshots/session/missing-sandbox-runner/session.v3.jsonl b/snapshots/session/missing-sandbox-runner/session.v3.jsonl
+index 559d903b6f..61536814d4 100644
+--- a/snapshots/session/missing-sandbox-runner/session.v3.jsonl
++++ b/snapshots/session/missing-sandbox-runner/session.v3.jsonl
+@@ -14,7 +14,7 @@
+ {"type":"session/title","data":{"title":"Run true once with bash","messageSeqs":[8],"source":{"kind":"fallback"}}}
+ {"type":"assistant/message","data":{"turn":1,"step":1,"message":{"role":"assistant","content":[{"type":"tool-call","id":"missing-runner-foreground","name":"bash","arguments":"{\"command\":\"true\",\"description\":\"Exercise missing sandbox runner\"}"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-flash"},"id":"{{message:4}}"},"usage":{"inputTokens":1,"outputTokens":1},"stream":[{"type":"chunk","time":1788699393107,"chunk":{"type":"block-start","index":0,"blockType":"tool-call"}},{"type":"tool-call-chunks","time0":1788699393107,"index":0,"dt":[],"id":"missing-runner-foreground","name":"bash","args":["{\"command\":\"true\",\"description\":\"Exercise missing sandbox runner\"}"]},{"type":"chunk","time":1788699393107,"chunk":{"type":"block-end","index":0,"block":{"type":"tool-call","id":"missing-runner-foreground","name":"bash","arguments":"{\"command\":\"true\",\"description\":\"Exercise missing sandbox runner\"}"}}},{"type":"chunk","time":1788699393107,"chunk":{"type":"usage","usage":{"inputTokens":1,"outputTokens":1}}},{"type":"chunk","time":1788699393107,"chunk":{"type":"finish","reason":{"kind":"tool-calls"}}}]},"surfaceOp":"append"}
+ {"type":"tool/call","data":{"turn":1,"step":1,"callId":"missing-runner-foreground","name":"bash","arguments":"{\"command\":\"true\",\"description\":\"Exercise missing sandbox runner\"}"}}
+-{"type":"tool/result","data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"missing-runner-foreground"},"content":[{"type":"tool-result","toolCallId":"missing-runner-foreground","content":[{"type":"text","text":"Error: sandbox mode \"read-only\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access. Runner failure: Error: spawn {{cwd}}/.dsh-missing-sandbox-runner ENOENT"}],"isError":true}],"role":"user","id":"{{message:5}}"},"error":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"sourceEventSeqs":[14],"surfaceOp":"append"}
++{"type":"tool/result","data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"missing-runner-foreground"},"content":[{"type":"tool-result","toolCallId":"missing-runner-foreground","content":[{"type":"text","text":"Error: sandbox mode \"read-only\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. This is a host-capability failure, not a file-policy denial, so do not retry with sandbox_permissions — report it to the user. The user can restore enforcement (install bubblewrap or use a Landlock-enforcing kernel on Linux, sandbox-exec on macOS, or the ACL restricted-token runner on Windows), or switch the permission preset to danger-full-access, which drops file confinement instead of repairing it. Runner failure: Error: spawn {{cwd}}/.dsh-missing-sandbox-runner ENOENT"}],"isError":true}],"role":"user","id":"{{message:5}}"},"error":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"sourceEventSeqs":[14],"surfaceOp":"append"}
+ {"type":"step/end","data":{"turn":1,"step":1}}
+ {"type":"step/start","data":{"turn":1,"step":2}}
+ {"type":"assistant/message","data":{"turn":1,"step":2,"message":{"role":"assistant","content":[{"type":"tool-call","id":"missing-runner-output","name":"job_output","arguments":"{\"job_id\":\"bash-1\",\"wait\":true}"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-flash"},"id":"{{message:6}}"},"usage":{"inputTokens":1,"outputTokens":1},"stream":[{"type":"chunk","time":1788699393128,"chunk":{"type":"block-start","index":0,"blockType":"tool-call"}},{"type":"tool-call-chunks","time0":1788699393128,"index":0,"dt":[],"id":"missing-runner-output","name":"job_output","args":["{\"job_id\":\"bash-1\",\"wait\":true}"]},{"type":"chunk","time":1788699393128,"chunk":{"type":"block-end","index":0,"block":{"type":"tool-call","id":"missing-runner-output","name":"job_output","arguments":"{\"job_id\":\"bash-1\",\"wait\":true}"}}},{"type":"chunk","time":1788699393128,"chunk":{"type":"usage","usage":{"inputTokens":1,"outputTokens":1}}},{"type":"chunk","time":1788699393128,"chunk":{"type":"finish","reason":{"kind":"tool-calls"}}}]},"surfaceOp":"append"}

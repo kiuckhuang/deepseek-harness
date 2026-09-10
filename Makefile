@@ -1,4 +1,4 @@
-.PHONY: all build check help sync web
+.PHONY: all build check help sandbox sync web
 
 all: sync
 
@@ -11,6 +11,9 @@ check:
 build:
 	./mk_dsh.sh
 
+sandbox:
+	./setup_sandbox.sh
+
 web:
 	pnpm dsh web
 
@@ -20,6 +23,7 @@ help:
 		'  make         sync the branch to the newest upstream release and regenerate patch layers' \
 		'  make check   verify that sync without changing anything' \
 		'  make build   build the newest release plus patch layers in a disposable worktree' \
+		'  make sandbox install and verify the sandbox runner (fixes SANDBOX_UNAVAILABLE)' \
 		'  make web     run pnpm dsh web' \
 		'  make help    show this message and the sync options' \
 		''

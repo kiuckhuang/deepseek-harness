@@ -15,8 +15,8 @@ kind: "package-library"
 
 - [使用本包](#use-this-package)
 - [API](#api)
-- [模型体验](#model-experience)
-- [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
 -----
@@ -42,15 +42,15 @@ import { bytesToBase64, randomUUID, type Uuid } from '@deepseek-ai/dsh-util-cryp
 | `Uuid` | 五段式 UUID 字符串类型，与 `crypto.randomUUID` 声明的返回形状一致。 |
 
 <a id="model-experience"></a>
-## 模型体验
+## Model Experience
 
 间接地，经由用它铸造请求、会话与附件标识符的消费方，这些标识符均不作为语义内容进入提示词。
 
-#### KV Cache 影响
+#### KV Cache effect
 
 无直接失效；铸造标识符的消费方自行负责其请求变化。
 
-## 已知限制与延期工作
+## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
 

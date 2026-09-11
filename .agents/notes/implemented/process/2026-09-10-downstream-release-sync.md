@@ -30,6 +30,8 @@ A layer's covered paths come from the layer itself (`git apply --numstat`), so e
 
 A release sync is one command, and a layer can no longer be stale with respect to the branch. Upstream adopting a downstream change retires its layer without an edit. One cost remains real: a release that changes the files a layer covers conflicts the merge, and the caller resolves that by hand before re-running.
 
+The branch mirrors upstream outside layer-covered paths and downstream-only files. A standing diff on upstream-owned documentation (the bilingual README corpus included) conflicts every release that touches the same files, so documentation changes ride with upstream, and fork-owned prose stays in layer-covered paths and downstream-only files.
+
 Layer coverage is derived from the existing layer, so a downstream change that adds a file to an already-covered area needs that file added to the layer once; later discovery is not automatic. Because `sync_dsh.sh` merges a tag while `mk_dsh.sh` builds one, a branch ahead of the newest release — for example after merging `upstream/master` — makes a derived layer carry that untagged drift until a release contains it.
 
 ## Verification

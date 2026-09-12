@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Sync the current branch to the newest upstream dsh-v* release and regenerate
-# the dsh_*.patch layers from the merged branch. The branch is the source of
-# truth for a downstream change; a layer is a derived artifact, so a release
-# sync derives it instead of asking anyone to retarget it by hand. A change
-# upstream has adopted empties its own layer, which retires it visibly.
+# Sync the current branch to upstream's default branch and regenerate the
+# dsh_*.patch layers from the merged branch. Each layer is derived against the
+# newest dsh-v* release tag, so the tag build mk_dsh.sh runs still applies it.
+# The branch is the source of truth for a downstream change; a layer is a
+# derived artifact. A change upstream has adopted empties its own layer, which
+# retires it visibly.
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_DIR=${REPO_DIR:-$SCRIPT_DIR}
 REMOTE=${REMOTE:-upstream}
 UPSTREAM_URL=${UPSTREAM_URL:-https://github.com/deepseek-ai/deepseek-harness.git}
+SYNC_REF=${SYNC_REF:-master}
 RELEASE_REF=${RELEASE_REF:-latest}
 PATCH_DIR=${PATCH_DIR:-$SCRIPT_DIR}
 PATCH_GLOB=${PATCH_GLOB:-dsh_*.patch}
@@ -23,8 +25,17 @@ usage() {
     cat <<'EOF'
 Usage: sync_dsh.sh [--check] [--patch FILE]... [--help]
 
-Merge the newest upstream dsh-v* release tag into the current branch, then
-regenerate every patch layer beside this script from the merged branch.
+Merge upstream's default branch into the current branch, then regenerate every
+patch layer beside this script from the merged branch. Each layer is derived
+against the newest dsh-v* release tag, so the tag build mk_dsh.sh runs applies
+it unchanged. While a release is newer than the default branch — the window
+between the tag and its merge back — the release is merged instead, with the
+tag named in the diagnostic.
+
+Following the default branch rather than a release tag keeps the branch on one
+upstream line. A release tag is cut from a release branch and reaches the
+default branch later, so merging tags compares two divergent lines and
+conflicts every documentation path both lines touched.
 
 The branch is merged forward; it is never reset or rewritten. A conflicting
 merge is aborted and reported, so the caller resolves it once by hand and
@@ -40,7 +51,8 @@ Environment overrides:
   REPO_DIR          Repository to sync (default: script directory)
   REMOTE            Git remote (default: upstream)
   UPSTREAM_URL      URL used when REMOTE is absent
-  RELEASE_REF       Release tag to sync to (default: latest dsh-v* tag)
+  SYNC_REF          Upstream branch merged into this one (default: master)
+  RELEASE_REF       Tag the layers are derived against (default: latest dsh-v* tag)
   PATCH_DIR         Directory holding the layers (default: script directory)
   PATCH_GLOB        Layer filename pattern, no slash (default: dsh_*.patch)
   PATCHES           Whitespace-separated layer list; replaces discovery
@@ -171,8 +183,27 @@ git fetch --prune --force "$FETCH_SOURCE" \
 RELEASE_COMMIT=$(git rev-parse --verify "refs/tags/$RELEASE_REF^{commit}") \
     || die "fetched tag does not resolve to a commit: $RELEASE_REF"
 
-if git merge-base --is-ancestor "$RELEASE_COMMIT" HEAD; then
-    info "$RELEASE_REF ($RELEASE_COMMIT) is already contained in $BRANCH"
+info "fetching $FETCH_SOURCE branch $SYNC_REF"
+git fetch --prune --force "$FETCH_SOURCE" \
+    "refs/heads/$SYNC_REF:refs/dsh-sync/$SYNC_REF"
+SYNC_COMMIT=$(git rev-parse --verify "refs/dsh-sync/$SYNC_REF^{commit}") \
+    || die "fetched branch does not resolve to a commit: $SYNC_REF"
+
+# Merge whichever line already contains the other. The default branch normally
+# contains the release; while a release is newer than the default branch, the
+# release is the complete line and merging the default branch would leave the
+# branch behind it.
+if git merge-base --is-ancestor "$RELEASE_COMMIT" "$SYNC_COMMIT"; then
+    MERGE_COMMIT=$SYNC_COMMIT
+    MERGE_REF=$SYNC_REF
+else
+    MERGE_COMMIT=$RELEASE_COMMIT
+    MERGE_REF=$RELEASE_REF
+    info "WARNING: $RELEASE_REF is not contained in $SYNC_REF; merging the release tag instead"
+fi
+
+if git merge-base --is-ancestor "$MERGE_COMMIT" HEAD; then
+    info "$MERGE_REF ($MERGE_COMMIT) is already contained in $BRANCH"
 fi
 
 # DERIVE_REF is the tree the layers are the difference from. In sync mode it is
@@ -180,10 +211,10 @@ fi
 # so nothing is mutated while still deriving from the merged result.
 DERIVE_REF=HEAD
 if [[ "$MODE" = check ]]; then
-    info "merge check: $BRANCH <- $RELEASE_REF ($RELEASE_COMMIT)"
+    info "merge check: $BRANCH <- $MERGE_REF ($MERGE_COMMIT)"
     merge_probe=$(mktemp)
     TMP_FILES+=("$merge_probe")
-    if git merge-tree --write-tree --name-only "$BRANCH" "$RELEASE_COMMIT" >"$merge_probe" 2>&1; then
+    if git merge-tree --write-tree --name-only "$BRANCH" "$MERGE_COMMIT" >"$merge_probe" 2>&1; then
         DERIVE_REF=$(head -n 1 "$merge_probe")
         info "merge would succeed without conflicts"
     else
@@ -193,10 +224,10 @@ else
     if ! git diff --quiet || ! git diff --cached --quiet; then
         die "working tree is dirty; commit or stash before syncing"
     fi
-    info "merging $RELEASE_REF into $BRANCH"
-    if ! git merge --no-edit "$RELEASE_COMMIT"; then
+    info "merging $MERGE_REF into $BRANCH"
+    if ! git merge --no-edit "$MERGE_COMMIT"; then
         git merge --abort >/dev/null 2>&1 || true
-        die "merge of $RELEASE_REF conflicted and was aborted; run 'git merge $RELEASE_REF' to resolve it, then re-run this script"
+        die "merge of $MERGE_REF conflicted and was aborted; resolve it with 'git merge $MERGE_COMMIT', then re-run this script"
     fi
     DERIVE_REF=HEAD
 fi
@@ -274,10 +305,10 @@ done
 
 if ((${#CHANGED[@]} > 0)); then
     git add -- "${CHANGED[@]}"
-    git commit -m "chore: sync downstream to $RELEASE_REF"
-    info "committed regenerated layers for $RELEASE_REF"
+    git commit -m "chore: sync downstream to $MERGE_REF"
+    info "committed regenerated layers for $MERGE_REF"
 else
-    info "no layer changed; $BRANCH is already in sync with $RELEASE_REF"
+    info "no layer changed; $BRANCH is already in sync with $MERGE_REF"
 fi
 
-info "sync complete for $RELEASE_REF ($RELEASE_COMMIT); push when ready"
+info "sync complete for $MERGE_REF ($MERGE_COMMIT); layers derived against $RELEASE_REF; push when ready"

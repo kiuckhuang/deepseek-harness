@@ -20,7 +20,7 @@ web:
 help:
 	@printf '%s\n' \
 		'Targets:' \
-		'  make         sync the branch to the newest upstream release and regenerate patch layers' \
+		'  make         sync the branch to upstream master and regenerate patch layers' \
 		'  make check   verify that sync without changing anything' \
 		'  make build   build the newest release plus patch layers in a disposable worktree' \
 		'  make sandbox install and verify the sandbox runner (fixes SANDBOX_UNAVAILABLE)' \

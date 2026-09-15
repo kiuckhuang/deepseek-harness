@@ -40,4 +40,4 @@ Status: implemented
 
 ## 验证
 
-在本决策作出时，最新上游发布为 `dsh-v0.1.5-rc.2`，解析到 `fb2c4b9e698e30edb738bca4cf0618587db7d203`，而 `master`（`c291e7961a`）已包含它。`bash -n sync_dsh.sh` 通过。`make check` 报告相对 `master` 的无冲突合并并使工作树保持不变，`./mk_dsh.sh --no-install -- true` 对 `dsh-v0.1.5-rc.2` 报告两个应用、一个跳过。把 `SYNC_REF` 指向早于该发布的分支已在合成 remote 上验证：脚本报告该发布未被包含、改为合并发布 tag，并仍对两者验证两个层。
+在本决策作出时，最新上游发布为 `dsh-v0.1.5-rc.2`，且 `master` 已包含它。`bash -n sync_dsh.sh` 通过。`make check` 报告相对 `master` 的无冲突合并并使工作树保持不变，`./mk_dsh.sh --no-install -- true` 对 `dsh-v0.1.5-rc.2` 报告两个应用、一个跳过。把 `SYNC_REF` 指向早于该发布的分支已在合成 remote 上验证：脚本报告该发布未被包含、改为合并发布 tag，并仍对两者验证两个层。

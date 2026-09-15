@@ -34,6 +34,6 @@ worktree 默认以 `--frozen-lockfile` 安装依赖并运行 `pnpm run build`；
 
 ## 验证
 
-在本决策作出时，最新 upstream tag 为 `dsh-v0.1.1-rc.2`，解析到 commit `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`。MCP 补丁可以正向应用到该发布版本。构建补丁作为正向补丁失败，并已表示为空补丁文件，因为其变更已进入上游。`bash -n mk_dsh.sh` 和 `git diff --check` 通过。
+在本决策作出时，最新 upstream tag 为 `dsh-v0.1.1-rc.2`。MCP 补丁可以正向应用到该发布版本。构建补丁作为正向补丁失败，并已表示为空补丁文件，因为其变更已进入上游。`bash -n mk_dsh.sh` 和 `git diff --check` 通过。
 
 发现机制通过组装后的脚本验证：三个已签入的层按字节序解析，`./mk_dsh.sh --no-install -- true` 报告 2 个应用、1 个跳过；新增第四个 `dsh_zzz_probe.patch` 时无需修改脚本即被发现，并在诊断中指明发布版本而被拒绝；显式 `--patch` 列表保持给定顺序，相对名字在进入 worktree 前解析为绝对路径，而包含斜杠或匹配不到的 `PATCH_GLOB` 会在任何 fetch 之前失败。

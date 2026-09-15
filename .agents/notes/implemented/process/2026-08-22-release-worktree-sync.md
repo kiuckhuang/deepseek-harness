@@ -34,6 +34,6 @@ The selected release tag is fetched into the local tag namespace with force and 
 
 ## Verification
 
-At the time of this decision, the newest upstream tag is `dsh-v0.1.1-rc.2`, resolving to commit `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`. The MCP patch applies forward to that release. The build patch fails as a forward patch and is represented by an empty patch file because its change is upstream. `bash -n mk_dsh.sh` and `git diff --check` pass.
+At the time of this decision, the newest upstream tag was `dsh-v0.1.1-rc.2`. The MCP patch applies forward to that release. The build patch fails as a forward patch and is represented by an empty patch file because its change is upstream. `bash -n mk_dsh.sh` and `git diff --check` pass.
 
 Discovery was exercised through the assembled script: the three checked-in layers resolve in bytewise order and `./mk_dsh.sh --no-install -- true` reports 2 applied and 1 skipped; adding a fourth `dsh_zzz_probe.patch` was discovered without a script edit and rejected with the release named in its diagnostic; an explicit `--patch` list keeps the given order, relative names resolve to absolute paths before the worktree change, and a `PATCH_GLOB` containing a slash or matching nothing fails before any fetch.

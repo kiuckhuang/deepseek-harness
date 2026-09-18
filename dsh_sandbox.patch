@@ -1,17 +1,17 @@
 diff --git a/packages/sandbox/sandbox/README.i18n.yaml b/packages/sandbox/sandbox/README.i18n.yaml
-index 9b52d9ef7f..87385d4361 100644
+index 0dfbb88d80..577d37a16e 100644
 --- a/packages/sandbox/sandbox/README.i18n.yaml
 +++ b/packages/sandbox/sandbox/README.i18n.yaml
 @@ -2,5 +2,5 @@
  # side as of the last confirmed-consistent state. Both languages carry equal authority;
  # after editing either side, bring the other along and re-record with:
  #   pnpm run verify-translation-pairing --write packages/sandbox/sandbox/README.md
--README.md: 88e873428115eb7a3880253b668a4de5b42d6e6d
--README.zh.md: b0144d12395cf01667ef7c2045a1d5f722936a4d
-+README.md: 3fdf8c3709e26f83119746ce49cbcc266d09efcd
-+README.zh.md: 1d33d2b5799a7f98e83e56b19b3549505998c351
+-README.md: 56cdd87c274cc8d951d4bc4e1388d7e985aa4a28
+-README.zh.md: c09d7e31fca4825e370636a4c5d9648e145f6a54
++README.md: 5576723760aeb02f9905f89b48da9c77a1e19bdf
++README.zh.md: 9046fff2e4608d0996cf1255e61db14563b5cf31
 diff --git a/packages/sandbox/sandbox/README.md b/packages/sandbox/sandbox/README.md
-index 88e8734281..3fdf8c3709 100644
+index 56cdd87c27..5576723760 100644
 --- a/packages/sandbox/sandbox/README.md
 +++ b/packages/sandbox/sandbox/README.md
 @@ -132,7 +132,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
@@ -24,7 +24,7 @@ index 88e8734281..3fdf8c3709 100644
  
  #### Token effect
 diff --git a/packages/sandbox/sandbox/README.zh.md b/packages/sandbox/sandbox/README.zh.md
-index b0144d1239..1d33d2b579 100644
+index c09d7e31fc..9046fff2e4 100644
 --- a/packages/sandbox/sandbox/README.zh.md
 +++ b/packages/sandbox/sandbox/README.zh.md
 @@ -132,7 +132,7 @@ kind: "package-reference"
@@ -36,19 +36,6 @@ index b0144d1239..1d33d2b579 100644
  ```
  
  #### Token 影响
-diff --git a/packages/sandbox/sandbox/src/escalation.ts b/packages/sandbox/sandbox/src/escalation.ts
-index 5cc180fe2b..ff54ba7c84 100644
---- a/packages/sandbox/sandbox/src/escalation.ts
-+++ b/packages/sandbox/sandbox/src/escalation.ts
-@@ -156,6 +156,8 @@ export interface EscalationRequest {
-  */
- export async function approveEscalation<A, C>(request: EscalationRequest, approval: EscalationApproval<A, C>): Promise<SandboxMode> {
-   const { requestedMode: mode, effectiveMode, justification, subject } = request
-+  // A requested mode already covered by the effective policy is a harmless no-op.
-+  if (mode === effectiveMode || (effectiveMode === 'danger-full-access' && (mode === 'read-only' || mode === 'workspace-write'))) return effectiveMode
-   // Strict widening is an EXECUTION check against the call's effective mode —
-   // deliberately not a schema constraint (the enum is the closed target
-   // vocabulary; the effective mode is per-call truth).
 diff --git a/packages/sandbox/sandbox/src/index.ts b/packages/sandbox/sandbox/src/index.ts
 index 4f026c8e72..e85552f7da 100644
 --- a/packages/sandbox/sandbox/src/index.ts
@@ -81,34 +68,6 @@ index 4f026c8e72..e85552f7da 100644
        + (detail === undefined ? '' : ` Runner failure: ${detail}`),
        SANDBOX_UNAVAILABLE,
      )
-diff --git a/packages/sandbox/sandbox/tests/escalation.spec.ts b/packages/sandbox/sandbox/tests/escalation.spec.ts
-index 15810d09d5..114389b4c4 100644
---- a/packages/sandbox/sandbox/tests/escalation.spec.ts
-+++ b/packages/sandbox/sandbox/tests/escalation.spec.ts
-@@ -81,12 +81,21 @@ describe('approveEscalation', () => {
-     expect(seen[0]?.reason).toBe('escalate sandbox to workspace-write: the user asked to write in the workspace')
-   })
- 
-+  it('a covered-mode request is a harmless no-op and never asks', async () => {
-+    const seen: unknown[] = []
-+    const spy = ingredients({ approver: approver('allowed-once', r => seen.push(r)) })
-+    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'workspace-write' as never }), spy)).resolves.toBe('workspace-write')
-+    await expect(approveEscalation(req({ requestedMode: 'danger-full-access', effectiveMode: 'danger-full-access' as never }), spy)).resolves.toBe('danger-full-access')
-+    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'danger-full-access' as never }), spy)).resolves.toBe('danger-full-access')
-+    expect(seen).toEqual([])
-+  })
-+
-   it('a non-widening request fails closed with its own text and never asks', async () => {
-     const seen: unknown[] = []
-     const spy = ingredients({ approver: approver('allowed-once', r => seen.push(r)) })
--    await expect(approveEscalation(req({ requestedMode: 'read-only' }), spy))
-+    await expect(approveEscalation(req({ requestedMode: 'unknown-mode' }), spy))
-       .rejects.toThrow(/not strictly wider than this call's current "read-only" mode/)
--    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'danger-full-access' as never }), spy))
-+    await expect(approveEscalation(req({ requestedMode: 'read-only', effectiveMode: 'workspace-write' as never }), spy))
-       .rejects.toThrow(/not strictly wider/)
-     expect(seen).toEqual([])
-   })
 diff --git a/packages/sandbox/sandbox/tests/vocabulary.spec.ts b/packages/sandbox/sandbox/tests/vocabulary.spec.ts
 index caba42b2a7..e259d402d6 100644
 --- a/packages/sandbox/sandbox/tests/vocabulary.spec.ts

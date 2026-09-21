@@ -129,10 +129,10 @@ index 9a4ec9123a..7d772ce859 100644
        for (const dispose of disposers.values()) dispose()
        disposers = new Map()
 diff --git a/packages/mcp/mcp-client/src/tools.ts b/packages/mcp/mcp-client/src/tools.ts
-index 10d0fdb649..aab629537c 100644
+index 10d0fdb649..ec8ffb284c 100644
 --- a/packages/mcp/mcp-client/src/tools.ts
 +++ b/packages/mcp/mcp-client/src/tools.ts
-@@ -30,6 +30,30 @@ export interface ToolBridgeOptions {
+@@ -30,6 +30,35 @@ export interface ToolBridgeOptions {
    registrationFailure: 'contain' | 'throw'
    serverName: string
    toolCallTimeoutMs: number
@@ -149,21 +149,26 @@ index 10d0fdb649..aab629537c 100644
 +/**
 + * Whether an MCP transport error means the server no longer recognizes this
 + * client's session. Streamable HTTP servers answer with 404 (unknown or
-+ * expired session) or 410; the SDK throws `StreamableHTTPError` carrying the
-+ * HTTP status in `code`. Such a generation cannot be reused — the SDK keeps
-+ * sending the stale session header — so the supervisor must re-initialize.
++ * expired session) or 410. The status arrives on different fields by SDK
++ * generation: `@modelcontextprotocol/sdk` carries it in `code` (numeric
++ * `StreamableHTTPError`), while `@modelcontextprotocol/client` 2.x carries it
++ * in `status` (`SdkHttpError`; its `code` is a string enum). Such a generation
++ * cannot be reused — the SDK keeps sending the stale session header — so the
++ * supervisor must re-initialize. The message test keeps a 404 from a foreign
++ * route (wrong path, rejected auth) from triggering recovery.
 + */
-+function isSessionLostError(error: unknown): boolean {
++export function isSessionLostError(error: unknown): boolean {
 +  if (typeof error !== 'object' || error === null) return false
 +  const code = (error as { code?: unknown }).code
-+  if (code !== 404 && code !== 410) return false
++  const status = (error as { status?: unknown }).status
++  if (status !== 404 && status !== 410 && code !== 404 && code !== 410) return false
 +  const rawMessage = (error as { message?: unknown }).message
 +  const message = typeof rawMessage === 'string' ? rawMessage : ''
-+  return /session|not found|expired|terminated|POSTing to endpoint/i.test(message)
++  return /session|not found|expired|terminated/i.test(message)
  }
  
  /** State for one sync generation: the current set of disposers keyed by public name. */
-@@ -135,10 +159,26 @@ export async function syncTools(
+@@ -135,10 +164,26 @@ export async function syncTools(
        inputSchema: tool.inputSchema,
        outputSchema: tool.outputSchema,
        taskRequired: tool.execution?.taskSupport === 'required',

@@ -43,17 +43,22 @@ export interface ToolBridgeOptions {
 /**
  * Whether an MCP transport error means the server no longer recognizes this
  * client's session. Streamable HTTP servers answer with 404 (unknown or
- * expired session) or 410; the SDK throws `StreamableHTTPError` carrying the
- * HTTP status in `code`. Such a generation cannot be reused — the SDK keeps
- * sending the stale session header — so the supervisor must re-initialize.
+ * expired session) or 410. The status arrives on different fields by SDK
+ * generation: `@modelcontextprotocol/sdk` carries it in `code` (numeric
+ * `StreamableHTTPError`), while `@modelcontextprotocol/client` 2.x carries it
+ * in `status` (`SdkHttpError`; its `code` is a string enum). Such a generation
+ * cannot be reused — the SDK keeps sending the stale session header — so the
+ * supervisor must re-initialize. The message test keeps a 404 from a foreign
+ * route (wrong path, rejected auth) from triggering recovery.
  */
-function isSessionLostError(error: unknown): boolean {
+export function isSessionLostError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false
   const code = (error as { code?: unknown }).code
-  if (code !== 404 && code !== 410) return false
+  const status = (error as { status?: unknown }).status
+  if (status !== 404 && status !== 410 && code !== 404 && code !== 410) return false
   const rawMessage = (error as { message?: unknown }).message
   const message = typeof rawMessage === 'string' ? rawMessage : ''
-  return /session|not found|expired|terminated|POSTing to endpoint/i.test(message)
+  return /session|not found|expired|terminated/i.test(message)
 }
 
 /** State for one sync generation: the current set of disposers keyed by public name. */

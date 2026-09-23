@@ -1,7 +1,7 @@
 /** Recorded npm evidence stays intact while authored files and exact edits remain checked. */
 
 import { describe, expect, it } from 'vitest'
-import { exactEditState, isRescopeExcluded } from './rescope-vendor.ts'
+import { exactEditState, isRescopeExcluded, patterns, rewrite } from './rescope-vendor.ts'
 
 const ANCHOR = '\n## Sync procedure'
 const INSERTED = `\n15. **rescope**: one log entry.\n${ANCHOR}`
@@ -19,6 +19,20 @@ describe('rescope file selection', () => {
     'packages/example/package.json',
   ])('keeps %s subject to upstream package-name checks', (file) => {
     expect(isRescopeExcluded(file)).toBe(false)
+  })
+})
+
+describe('generic pass skip boundary', () => {
+  const localeKey = "type RowProps = PropsLocale<'cordis'> & { toolName: string }"
+  const all = patterns(false)
+
+  it('preserves the cordis locale namespace key in a skipped ui-cordis component', () => {
+    expect(rewrite(localeKey, 'packages/extensions/ui-cordis/src/client/CordisPreparingRow.tsx', all).text).toBe(localeKey)
+  })
+
+  it('rewrites the same quoted token where it names the vendored package', () => {
+    const source = "import type { Context } from 'cordis'"
+    expect(rewrite(source, 'packages/example/src/index.ts', all).text).toBe("import type { Context } from '@deepseek-ai/cordis'")
   })
 })
 

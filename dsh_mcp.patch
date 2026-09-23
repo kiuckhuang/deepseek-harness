@@ -129,10 +129,10 @@ index 9a4ec9123a..7d772ce859 100644
        for (const dispose of disposers.values()) dispose()
        disposers = new Map()
 diff --git a/packages/mcp/mcp-client/src/tools.ts b/packages/mcp/mcp-client/src/tools.ts
-index 9e7b5c0ab5..b8d72b64c9 100644
+index 9e7b5c0ab5..a14cd572cb 100644
 --- a/packages/mcp/mcp-client/src/tools.ts
 +++ b/packages/mcp/mcp-client/src/tools.ts
-@@ -30,6 +30,35 @@ export interface ToolBridgeOptions {
+@@ -30,6 +30,37 @@ export interface ToolBridgeOptions {
    registrationFailure: 'contain' | 'throw'
    serverName: string
    toolCallTimeoutMs: number
@@ -156,6 +156,8 @@ index 9e7b5c0ab5..b8d72b64c9 100644
 + * cannot be reused — the SDK keeps sending the stale session header — so the
 + * supervisor must re-initialize. The message test keeps a 404 from a foreign
 + * route (wrong path, rejected auth) from triggering recovery.
++ * @param error - The thrown value to classify.
++ * @returns Whether the session was lost and the supervisor must re-initialize.
 + */
 +export function isSessionLostError(error: unknown): boolean {
 +  if (typeof error !== 'object' || error === null) return false
@@ -168,7 +170,7 @@ index 9e7b5c0ab5..b8d72b64c9 100644
  }
  
  /** State for one sync generation: the current set of disposers keyed by public name. */
-@@ -135,10 +164,26 @@ export async function syncTools(
+@@ -135,10 +166,26 @@ export async function syncTools(
        inputSchema: tool.inputSchema,
        outputSchema: tool.outputSchema,
        taskRequired: tool.execution?.taskSupport === 'required',

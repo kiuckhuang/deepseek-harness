@@ -50,6 +50,8 @@ export interface ToolBridgeOptions {
  * cannot be reused — the SDK keeps sending the stale session header — so the
  * supervisor must re-initialize. The message test keeps a 404 from a foreign
  * route (wrong path, rejected auth) from triggering recovery.
+ * @param error - The thrown value to classify.
+ * @returns Whether the session was lost and the supervisor must re-initialize.
  */
 export function isSessionLostError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false

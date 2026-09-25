@@ -1,17 +1,5 @@
-diff --git a/packages/sandbox/sandbox/README.i18n.yaml b/packages/sandbox/sandbox/README.i18n.yaml
-index 0dfbb88d80..577d37a16e 100644
---- a/packages/sandbox/sandbox/README.i18n.yaml
-+++ b/packages/sandbox/sandbox/README.i18n.yaml
-@@ -2,5 +2,5 @@
- # side as of the last confirmed-consistent state. Both languages carry equal authority;
- # after editing either side, bring the other along and re-record with:
- #   pnpm run verify-translation-pairing --write packages/sandbox/sandbox/README.md
--README.md: 56cdd87c274cc8d951d4bc4e1388d7e985aa4a28
--README.zh.md: c09d7e31fca4825e370636a4c5d9648e145f6a54
-+README.md: 5576723760aeb02f9905f89b48da9c77a1e19bdf
-+README.zh.md: 9046fff2e4608d0996cf1255e61db14563b5cf31
 diff --git a/packages/sandbox/sandbox/README.md b/packages/sandbox/sandbox/README.md
-index 56cdd87c27..5576723760 100644
+index 5e089c468c..64e4fe6b2d 100644
 --- a/packages/sandbox/sandbox/README.md
 +++ b/packages/sandbox/sandbox/README.md
 @@ -132,7 +132,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
@@ -24,7 +12,7 @@ index 56cdd87c27..5576723760 100644
  
  #### Token effect
 diff --git a/packages/sandbox/sandbox/README.zh.md b/packages/sandbox/sandbox/README.zh.md
-index c09d7e31fc..9046fff2e4 100644
+index dc38008d98..e333118ddc 100644
 --- a/packages/sandbox/sandbox/README.zh.md
 +++ b/packages/sandbox/sandbox/README.zh.md
 @@ -132,7 +132,7 @@ kind: "package-reference"
@@ -37,10 +25,10 @@ index c09d7e31fc..9046fff2e4 100644
  
  #### Token 影响
 diff --git a/packages/sandbox/sandbox/src/index.ts b/packages/sandbox/sandbox/src/index.ts
-index 4f026c8e72..e85552f7da 100644
+index 3cc0ec9f64..e27c5314fc 100644
 --- a/packages/sandbox/sandbox/src/index.ts
 +++ b/packages/sandbox/sandbox/src/index.ts
-@@ -127,15 +127,23 @@ export const SANDBOX_UNAVAILABLE = 'SANDBOX_UNAVAILABLE'
+@@ -128,15 +128,23 @@ export const SANDBOX_UNAVAILABLE = 'SANDBOX_UNAVAILABLE'
   * Thrown when {@link SandboxProvider.confine} cannot enforce the requested
   * mode. Carries {@link SANDBOX_UNAVAILABLE} through the structured error
   * channel.

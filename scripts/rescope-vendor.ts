@@ -433,6 +433,7 @@ const VENDORED_LIBRARY = /^@deepseek-ai\\/(cosmokit|schemastery)(\\/|$)/
  */
 export function isRescopeExcluded(file: string): boolean {
   if (file === 'scripts/rescope-vendor.ts') return true // the mapping itself
+  if (file === 'scripts/rescope-vendor.spec.ts') return true // the spec quotes both name forms to test the rewrite
   if (file.startsWith('.agents/notes/')) return true // notes record what was true when written
   // Recorded model payloads quote documentation verbatim, so they must mirror the
   // sources on disk — including the notes this rescope leaves alone.
@@ -460,7 +461,12 @@ interface Pattern {
   readonly yamlName: RegExp
 }
 
-function patterns(reverse: boolean): Pattern[] {
+/**
+ * Compile the rename mapping into ordered, precompiled rewrite patterns.
+ * @param reverse - Reverse the mapping to restore upstream names.
+ * @returns One pattern per rename, longest source name first.
+ */
+export function patterns(reverse: boolean): Pattern[] {
   return RENAMES
     .map(rename => ({
       upstream: rename.upstream,
@@ -499,8 +505,12 @@ function rewriteLine(line: string, file: string, all: readonly Pattern[]): strin
  * prose is a record of what was true when it was written, and the same spelling
  * can mean something else entirely — the Python SDK's `cordis` option, or the
  * unvendored `@cordisjs/plugin-http`.
+ * @param text - Full file content rewritten line by line.
+ * @param file - Repository-relative path with forward slash separators.
+ * @param all - Precompiled patterns from `patterns`.
+ * @returns The rewritten text and the number of changed lines.
  */
-function rewrite(text: string, file: string, all: readonly Pattern[]): { text: string; lines: number } {
+export function rewrite(text: string, file: string, all: readonly Pattern[]): { text: string; lines: number } {
   const markdown = file.endsWith('.md')
   const prose = markdown && file.startsWith('docs/')
   let insideFence = false

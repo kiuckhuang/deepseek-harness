@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-22-release-worktree-sync.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-22-release-worktree-sync.md
-2026-08-22-release-worktree-sync.md: ff963dcb2d3ca3e3cc9c555b24004bbef8990365
-2026-08-22-release-worktree-sync.zh.md: d81f860826404a4a5eeff9393f746c226442ea99
+/agent-note-release-worktree-synchronization:
+  en: 171e44775e6bc903
+  zh: a393d43aea9cdb98
+/agent-note-release-worktree-synchronization/problem:
+  en: 944ad33cee639b78
+  zh: f6ff41e1d39d8a09
+/agent-note-release-worktree-synchronization/decision:
+  en: 9ec0a9008f75ef15
+  zh: 2fa22fb964822c5d
+/agent-note-release-worktree-synchronization/alternatives-considered:
+  en: 57be01d03c86bc9d
+  zh: 208cb946e824014e
+/agent-note-release-worktree-synchronization/consequences:
+  en: 4e7ae44aaa3facba
+  zh: 2b1ad4cbc0deaa4f
+/agent-note-release-worktree-synchronization/verification:
+  en: 08691d97fc0f2835
+  zh: d8d9c79a80eb1c2b

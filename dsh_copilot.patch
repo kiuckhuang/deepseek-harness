@@ -1,0 +1,197 @@
+diff --git a/packages/llm/llm-pi-ai/README.i18n.yaml b/packages/llm/llm-pi-ai/README.i18n.yaml
+index 19311117b6..d9a55103f2 100644
+--- a/packages/llm/llm-pi-ai/README.i18n.yaml
++++ b/packages/llm/llm-pi-ai/README.i18n.yaml
+@@ -27,8 +27,8 @@
+   en: c36f66438638ae08
+   zh: 066a2fc4cb97c86f
+ /deepseek-ai-dsh-llm-pi-ai/use-this-package/resolve-the-model-catalog:
+-  en: 376f83206858b601
+-  zh: 38bb6993609c96a6
++  en: 1c56f1a17bdae276
++  zh: eac0824f0362339a
+ /deepseek-ai-dsh-llm-pi-ai/use-this-package/run-with-reasoning-and-wire-compatibility:
+   en: 86b456496b54854e
+   zh: ff77ca11d39ba8d2
+diff --git a/packages/llm/llm-pi-ai/README.md b/packages/llm/llm-pi-ai/README.md
+index 0e8a801b53..4f96851e4c 100644
+--- a/packages/llm/llm-pi-ai/README.md
++++ b/packages/llm/llm-pi-ai/README.md
+@@ -96,7 +96,7 @@ A provider pi-ai ships a login for can be signed into through the harness author
+ 
+ ### Resolve the model catalog
+ 
+-A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
++A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later. The GitHub Copilot route also supplies GPT-6.1 Sol when the installed pi-ai catalog lacks it, using Copilot's advertised Responses protocol, context limit, and reasoning levels.
+ 
+ ### Run with reasoning and wire compatibility
+ 
+diff --git a/packages/llm/llm-pi-ai/README.zh.md b/packages/llm/llm-pi-ai/README.zh.md
+index 5126fe25ed..1d9cb0a2e7 100644
+--- a/packages/llm/llm-pi-ai/README.zh.md
++++ b/packages/llm/llm-pi-ai/README.zh.md
+@@ -96,7 +96,7 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程
+ 
+ ### 解析模型目录
+ 
+-profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。
++profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。如果已安装的 pi-ai 目录尚未收录 GPT-6.1 Sol，GitHub Copilot 路由也会提供该模型，并采用 Copilot 公布的 Responses 协议、上下文上限和推理等级。
+ 
+ ### 带推理（reasoning）与协议兼容运行
+ 
+diff --git a/packages/llm/llm-pi-ai/src/catalog.ts b/packages/llm/llm-pi-ai/src/catalog.ts
+index a257feedba..df55aec2e8 100644
+--- a/packages/llm/llm-pi-ai/src/catalog.ts
++++ b/packages/llm/llm-pi-ai/src/catalog.ts
+@@ -194,13 +194,32 @@ export function catalogProviderIds(): readonly string[] {
+ }
+ 
+ /**
+- * The installed catalog models for one route, indexed by model id.
++ * The installed catalog models for one route, indexed by model id. Copilot
++ * includes GPT-6.1 Sol when the installed pi-ai catalog has not added it yet.
+  * @param provider - provider route key.
+  * @returns catalog models by id; empty for a route pi-ai does not ship.
+  */
+ export function catalogModels(provider: string): Map<string, Model<Api>> {
+   if (!catalogProviders().has(provider)) return new Map()
+   const models = getBuiltinModels(provider as BuiltinProvider) as Model<Api>[]
++  if (provider === 'github-copilot' && !models.some(model => model.id === 'gpt-6.1-sol')) {
++    const sol = models.find(model => model.id === 'gpt-6-sol')
++    if (sol === undefined) throw new Error('llm-pi-ai: the installed Copilot catalog cannot describe gpt-6.1-sol')
++    // Copilot advertises the same Responses protocol, headers, modalities and
++    // reasoning efforts for both Sol models. Its model listing supplies the
++    // larger context and distinct cached-input pricing of GPT-6.1 Sol.
++    models.push({
++      ...sol,
++      id: 'gpt-6.1-sol',
++      name: 'GPT-6.1 Sol',
++      contextWindow: 1_050_000,
++      cost: {
++        ...sol.cost,
++        cacheRead: 0.1,
++        tiers: [{ inputTokensAbove: 272_000, input: 4, output: 15, cacheRead: 0.2, cacheWrite: 5 }],
++      },
++    })
++  }
+   return new Map(models.map(model => [model.id, model]))
+ }
+ 
+diff --git a/packages/llm/llm-pi-ai/tests/catalog.spec.ts b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
+index e6f5330e9b..12ec1a51ea 100644
+--- a/packages/llm/llm-pi-ai/tests/catalog.spec.ts
++++ b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
+@@ -12,12 +12,18 @@ import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-s
+ import { normalizeContext } from '@earendil-works/pi-ai/utils/transcript'
+ import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-works/pi-ai'
+ import { resolveProfiles } from '../src/config.ts'
++import { catalogModels } from '../src/catalog.ts'
+ import { createModels, createProvider, getSupportedThinkingLevels } from '../src/models.ts'
+ import { buildProvider, supportedProtocols } from '../src/provider.ts'
+ import { assemble } from './assemble.ts'
+ import { memoryAuth } from './auth-double.ts'
+ import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
+ 
++vi.mock('@earendil-works/pi-ai/providers/all', async (importOriginal) => {
++  const installed = await importOriginal<typeof import('@earendil-works/pi-ai/providers/all')>()
++  return { ...installed, getBuiltinModels: vi.fn(installed.getBuiltinModels) }
++})
++
+ declare module '@deepseek-ai/dsh-llm' {
+   interface MessageSourceMap {
+     'test': { kind: 'test' } & ContextFormed
+@@ -69,6 +75,49 @@ async function harness(config: LlmPiAi.Options): Promise<Context> {
+   return ctx
+ }
+ 
++describe('GitHub Copilot catalog', () => {
++  it('adds GPT-6.1 Sol with its advertised capacity and Responses protocol', () => {
++    const profile = resolveProfiles({ 'github-copilot': {} }).get('github-copilot')
++    const model = profile?.piProvider?.getModels().find(entry => entry.id === 'gpt-6.1-sol')
++    const previous = profile?.piProvider?.getModels().find(entry => entry.id === 'gpt-6-sol')
++
++    expect(model).toMatchObject({
++      id: 'gpt-6.1-sol',
++      name: 'GPT-6.1 Sol',
++      api: 'openai-responses',
++      provider: 'github-copilot',
++      contextWindow: 1_050_000,
++      maxTokens: 128_000,
++      input: ['text', 'image'],
++      thinkingLevelMap: { off: 'none', max: 'max' },
++    })
++    expect(model?.headers).toEqual(previous?.headers)
++    expect(model?.baseUrl).toBe(previous?.baseUrl)
++  })
++
++  it('keeps an upstream GPT-6.1 Sol entry unchanged', () => {
++    const installed = getBuiltinModels('github-copilot')
++    const sol = installed.find(model => model.id === 'gpt-6-sol')
++    if (sol === undefined) throw new Error('the installed catalog ships no Copilot Sol model')
++    const supplied = { ...sol, id: 'gpt-6.1-sol', name: 'Upstream Sol' }
++    const listing = vi.mocked(getBuiltinModels<'github-copilot'>).mockReturnValueOnce([...installed, supplied])
++    try {
++      expect(catalogModels('github-copilot').get('gpt-6.1-sol')).toBe(supplied)
++    } finally {
++      listing.mockReset()
++    }
++  })
++
++  it('reports an installed catalog that cannot supply Sol protocol metadata', () => {
++    const listing = vi.mocked(getBuiltinModels).mockReturnValueOnce([])
++    try {
++      expect(() => catalogModels('github-copilot')).toThrow('the installed Copilot catalog cannot describe gpt-6.1-sol')
++    } finally {
++      listing.mockReset()
++    }
++  })
++})
++
+ describe('hand-declared providers', () => {
+   it('serves a route pi-ai has never heard of from its own declaration', async () => {
+     const server = await mockServer([{ events: textEvents }])
+diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
+index 6beedfb3fb..79c12295a2 100644
+--- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
++++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
+@@ -110,6 +110,40 @@ describe('llm-pi-ai real dormant composition', () => {
+     expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
+   })
+ 
++  it('offers GPT-6.1 Sol from a configured Copilot route and sends it to Responses', async () => {
++    vi.stubEnv('PI_COMPOSITION_KEY', '')
++    const server = await mockServer([{ status: 401, body: JSON.stringify({ error: { message: 'expected mock failure' } }) }])
++    const { ctx, settingsPath } = await loadComposition()
++    await writeFile(settingsPath, [
++      '- id: llm-pi-ai',
++      '  config:',
++      '    providers:',
++      '      github-copilot:',
++      '        displayName: GitHub Copilot',
++      '        apiKeyEnv: PI_COMPOSITION_KEY',
++      `        baseURL: ${server.url}`,
++      '',
++    ].join('\n'))
++    await vi.waitFor(() => {
++      expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['github-copilot'])
++    }, { timeout: 5000 })
++
++    expect(await ctx.llm.listModels('github-copilot')).toContainEqual({
++      provider: 'github-copilot',
++      id: 'gpt-6.1-sol',
++      name: 'GPT-6.1 Sol',
++      inputModalities: ['text', 'image'],
++    })
++    expect(await ctx.llm.resolveModelInfo('github-copilot', 'gpt-6.1-sol'))
++      .toMatchObject({ context: { contextWindow: 1_050_000 } })
++    expect(await ctx.llm.discoverModels('llm-pi-ai', { provider: 'github-copilot' }))
++      .toContainEqual(expect.objectContaining({ id: 'gpt-6.1-sol' }))
++    const result = await assemble(ctx, { provider: 'github-copilot', model: 'gpt-6.1-sol', messages: [] })
++    expect(result.finish.kind).toBe('error')
++    expect(server.paths).toEqual(['/responses'])
++    expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
++  })
++
+   it('uses settings-only route headers for model discovery', async () => {
+     vi.stubEnv('PI_COMPOSITION_KEY', '')
+     const server = await mockServer([{ body: JSON.stringify({ data: [{ id: 'acme-private' }] }) }])

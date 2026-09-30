@@ -194,13 +194,32 @@ export function catalogProviderIds(): readonly string[] {
 }
 
 /**
- * The installed catalog models for one route, indexed by model id.
+ * The installed catalog models for one route, indexed by model id. Copilot
+ * includes GPT-6.1 Sol when the installed pi-ai catalog has not added it yet.
  * @param provider - provider route key.
  * @returns catalog models by id; empty for a route pi-ai does not ship.
  */
 export function catalogModels(provider: string): Map<string, Model<Api>> {
   if (!catalogProviders().has(provider)) return new Map()
   const models = getBuiltinModels(provider as BuiltinProvider) as Model<Api>[]
+  if (provider === 'github-copilot' && !models.some(model => model.id === 'gpt-6.1-sol')) {
+    const sol = models.find(model => model.id === 'gpt-6-sol')
+    if (sol === undefined) throw new Error('llm-pi-ai: the installed Copilot catalog cannot describe gpt-6.1-sol')
+    // Copilot advertises the same Responses protocol, headers, modalities and
+    // reasoning efforts for both Sol models. Its model listing supplies the
+    // larger context and distinct cached-input pricing of GPT-6.1 Sol.
+    models.push({
+      ...sol,
+      id: 'gpt-6.1-sol',
+      name: 'GPT-6.1 Sol',
+      contextWindow: 1_050_000,
+      cost: {
+        ...sol.cost,
+        cacheRead: 0.1,
+        tiers: [{ inputTokensAbove: 272_000, input: 4, output: 15, cacheRead: 0.2, cacheWrite: 5 }],
+      },
+    })
+  }
   return new Map(models.map(model => [model.id, model]))
 }
 

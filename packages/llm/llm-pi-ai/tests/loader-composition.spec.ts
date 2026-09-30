@@ -110,6 +110,40 @@ describe('llm-pi-ai real dormant composition', () => {
     expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
   })
 
+  it('offers GPT-6.1 Sol from a configured Copilot route and sends it to Responses', async () => {
+    vi.stubEnv('PI_COMPOSITION_KEY', '')
+    const server = await mockServer([{ status: 401, body: JSON.stringify({ error: { message: 'expected mock failure' } }) }])
+    const { ctx, settingsPath } = await loadComposition()
+    await writeFile(settingsPath, [
+      '- id: llm-pi-ai',
+      '  config:',
+      '    providers:',
+      '      github-copilot:',
+      '        displayName: GitHub Copilot',
+      '        apiKeyEnv: PI_COMPOSITION_KEY',
+      `        baseURL: ${server.url}`,
+      '',
+    ].join('\n'))
+    await vi.waitFor(() => {
+      expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['github-copilot'])
+    }, { timeout: 5000 })
+
+    expect(await ctx.llm.listModels('github-copilot')).toContainEqual({
+      provider: 'github-copilot',
+      id: 'gpt-6.1-sol',
+      name: 'GPT-6.1 Sol',
+      inputModalities: ['text', 'image'],
+    })
+    expect(await ctx.llm.resolveModelInfo('github-copilot', 'gpt-6.1-sol'))
+      .toMatchObject({ context: { contextWindow: 1_050_000 } })
+    expect(await ctx.llm.discoverModels('llm-pi-ai', { provider: 'github-copilot' }))
+      .toContainEqual(expect.objectContaining({ id: 'gpt-6.1-sol' }))
+    const result = await assemble(ctx, { provider: 'github-copilot', model: 'gpt-6.1-sol', messages: [] })
+    expect(result.finish.kind).toBe('error')
+    expect(server.paths).toEqual(['/responses'])
+    expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
+  })
+
   it('uses settings-only route headers for model discovery', async () => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')
     const server = await mockServer([{ body: JSON.stringify({ data: [{ id: 'acme-private' }] }) }])

@@ -1,0 +1,698 @@
+diff --git a/THIRD_PARTY_NOTICES.md b/THIRD_PARTY_NOTICES.md
+index b863bd7258..088a1937d5 100644
+--- a/THIRD_PARTY_NOTICES.md
++++ b/THIRD_PARTY_NOTICES.md
+@@ -139,7 +139,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
+ 
+ pnpm applies local patches to the following packages at install time, so shipped artifacts carry modified copies; each patch file is the complete record of the modification:
+ 
+-- `@earendil-works/pi-ai@0.87.1` — [`patches/@earendil-works__pi-ai@0.87.1.patch`](patches/@earendil-works__pi-ai@0.87.1.patch)
++- `@earendil-works/pi-ai@*` — [`patches/@earendil-works__pi-ai.patch`](patches/@earendil-works__pi-ai.patch)
+ - `@electron/osx-sign@1.3.3` — [`patches/@electron__osx-sign@1.3.3.patch`](patches/@electron__osx-sign@1.3.3.patch)
+ - `@fortune-sheet/core@1.0.4` — [`patches/@fortune-sheet__core@1.0.4.patch`](patches/@fortune-sheet__core@1.0.4.patch)
+ - `@fortune-sheet/react@1.0.4` — [`patches/@fortune-sheet__react@1.0.4.patch`](patches/@fortune-sheet__react@1.0.4.patch)
+diff --git a/packages/llm/llm-pi-ai/README.i18n.yaml b/packages/llm/llm-pi-ai/README.i18n.yaml
+index 19311117b6..b2d003a8ec 100644
+--- a/packages/llm/llm-pi-ai/README.i18n.yaml
++++ b/packages/llm/llm-pi-ai/README.i18n.yaml
+@@ -27,8 +27,8 @@
+   en: c36f66438638ae08
+   zh: 066a2fc4cb97c86f
+ /deepseek-ai-dsh-llm-pi-ai/use-this-package/resolve-the-model-catalog:
+-  en: 376f83206858b601
+-  zh: 38bb6993609c96a6
++  en: bcf22c948f9cc661
++  zh: b5eba716248ae02c
+ /deepseek-ai-dsh-llm-pi-ai/use-this-package/run-with-reasoning-and-wire-compatibility:
+   en: 86b456496b54854e
+   zh: ff77ca11d39ba8d2
+@@ -87,8 +87,8 @@
+   en: b6bd570c0159ba08
+   zh: 7d2d91eea6a8d830
+ /deepseek-ai-dsh-llm-pi-ai/known-limitations-and-deferred-work:
+-  en: bb240ee5dd3f81c7
+-  zh: 884506a36f4aac62
++  en: cdaea9fcaf2f8c08
++  zh: 7a75660b207c888b
+ /deepseek-ai-dsh-llm-pi-ai/known-limitations-and-deferred-work/dev-note:
+   en: be67a4547256efbf
+   zh: 8c32799683ba292c
+diff --git a/packages/llm/llm-pi-ai/README.md b/packages/llm/llm-pi-ai/README.md
+index 0e8a801b53..4e9c990984 100644
+--- a/packages/llm/llm-pi-ai/README.md
++++ b/packages/llm/llm-pi-ai/README.md
+@@ -98,6 +98,8 @@ A provider pi-ai ships a login for can be signed into through the harness author
+ 
+ A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
+ 
++The patched pi-ai catalog includes `gpt-6.1-sol` for GitHub Copilot. If the upstream Copilot catalog omits that id, the [dependency patch](../../../patches/@earendil-works__pi-ai.patch) combines pi-ai's OpenAI GPT-6.1 Sol model metadata with its GitHub Copilot GPT-6 Sol transport settings. A native upstream Copilot entry takes precedence without modification.
++
+ ### Run with reasoning and wire compatibility
+ 
+ `reasoningEfforts` declares a model's selectable thinking levels: each key is a level selectors offer, its value the spelling dispatch sends on the wire, so `max: ultra` renames a level for a gateway with its own vocabulary. Omitting the field keeps the installed catalog entry's capability; `false` declares a non-reasoning model. `compat` switches reshape the request for endpoints pi-ai cannot recognize — which role carries the system prompt, which field caps output, how a thinking level travels — configurable per route and per model. A model neither the entry nor the installed catalog sizes takes the route's `defaultContextWindow` and `defaultMaxTokens` fallbacks.
+@@ -229,7 +231,8 @@ These limits define where the adapter stops and future work begins. They are cur
+ - **Only a leading in-history `system` message becomes pi-ai's `systemPrompt`** — this adapter uses pi-ai's single `systemPrompt` input, so a later `system` message, or a leading one when `GenerateOptions.system` is also set, folds into a `user` message at its position; provider-specific placement of the prompt follows pi-ai rather than a harness-owned wire override. Images in system or assistant history, including the leading system message, fail with `UNSUPPORTED_CONTENT` on both conversion paths.
+ - **Provider HTTP status is unavailable** — pi-ai error events do not expose a stable HTTP status across providers.
+ - **Retry policy is provider-owned, not an SDK retry** — pi-ai SDK retries stay disabled so durable agent steps and `llm/retry` events own every visible attempt, and direct `ctx.llm.stream()` calls remain single-attempt.
+-- **Streamed tool-call arguments are parsed once, when the call ends** — the installed pi-ai carries [`patches/@earendil-works__pi-ai@0.87.1.patch`](../../../patches/@earendil-works__pi-ai@0.87.1.patch), which removes the per-delta re-parse of the whole accumulated argument JSON in every stream adapter (upstream [earendil-works/pi#9265](https://github.com/earendil-works/pi/issues/9265)); unpatched, a multi-megabyte argument stream costs O(n²) CPU on the event loop and stalls every session in the process. Until `toolcall_end`, a pi-ai partial's tool-call `arguments` stays `{}`; this adapter reads only the delta strings and the finalized arguments. Re-apply or retire the patch on every pi-ai upgrade.
++- **Streamed tool-call arguments are parsed once, when the call ends** — the installed pi-ai carries [`patches/@earendil-works__pi-ai.patch`](../../../patches/@earendil-works__pi-ai.patch), which removes the per-delta re-parse of the whole accumulated argument JSON in every stream adapter (upstream [earendil-works/pi#9265](https://github.com/earendil-works/pi/issues/9265)); unpatched, a multi-megabyte argument stream costs O(n²) CPU on the event loop and stalls every session in the process. Until `toolcall_end`, a pi-ai partial's tool-call `arguments` stays `{}`; this adapter reads only the delta strings and the finalized arguments.
++- **Dependency upgrades must retain the pi-ai patch registration** — [`pnpm-workspace.yaml`](../../../pnpm-workspace.yaml) registers the stable patch as `@earendil-works/pi-ai@*`, so `pnpm install` reapplies it across dependency versions. Incompatible source hunks stop installation; missing supplement metadata fails catalog loading with a patch-review diagnostic. Maintainers must rebase incompatible hunks or retire fixes upstream already supplies. These guarantees require the patch and registration to remain in the checkout; installing a published Harness version that does not include them does not preserve local patches.
+ 
+ <a id="dev-note"></a>
+ ### Dev Note
+diff --git a/packages/llm/llm-pi-ai/README.zh.md b/packages/llm/llm-pi-ai/README.zh.md
+index 5126fe25ed..0e6f28ad3b 100644
+--- a/packages/llm/llm-pi-ai/README.zh.md
++++ b/packages/llm/llm-pi-ai/README.zh.md
+@@ -98,6 +98,8 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程
+ 
+ profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。
+ 
++打补丁后的 pi-ai 目录为 GitHub Copilot 提供 `gpt-6.1-sol`。如果上游 Copilot 目录没有该 id，[依赖补丁](../../../patches/@earendil-works__pi-ai.patch)会把 pi-ai 的 OpenAI GPT-6.1 Sol 模型元数据与 GitHub Copilot GPT-6 Sol 传输设置组合起来。上游原生 Copilot 条目优先，且不会被修改。
++
+ ### 带推理（reasoning）与协议兼容运行
+ 
+ `reasoningEfforts` 声明模型可选择的 thinking 等级：每个键都是选择器提供的等级，其值是分派时在协议中发送的拼写，因此 `max: ultra` 可以为拥有自有词汇的网关重命名等级。省略该字段时保留已安装目录条目的能力；`false` 声明非推理模型。对于 pi-ai 无法识别的端点，`compat` 开关重塑请求——哪个角色携带系统提示词、哪个字段限制输出、thinking 等级如何传递——可逐路由、逐模型配置。条目与已安装目录都没有尺寸的模型，会采用路由的 `defaultContextWindow` 与 `defaultMaxTokens` 回退值。
+@@ -229,7 +231,8 @@ pi-ai 事件变成 harness 的推理、文本、工具调用、用量与 finish
+ - **只有历史中首条 `system` 消息会成为 pi-ai 的 `systemPrompt`**——本适配器使用 pi-ai 的单一 `systemPrompt` 输入，因此后续的 `system` 消息，或在同时设置了 `GenerateOptions.system` 时的首条消息，会在原位置折叠为 `user` 消息；系统提示词的提供方专属放置遵循 pi-ai，而非 harness 自有的协议覆盖。system 或 assistant 历史中的图片（包括首条系统消息中的图片）在两条转换路径上都会以 `UNSUPPORTED_CONTENT` 失败。
+ - **提供方 HTTP 状态不可用**——pi-ai 错误事件不跨提供方暴露稳定 HTTP 状态。
+ - **重试策略由提供方自有，而非 SDK 重试**——pi-ai SDK 重试保持禁用，因此持久 agent（智能体）步骤与 `llm/retry` 事件拥有每个可见尝试，直接 `ctx.llm.stream()` 调用仍是单次尝试。
+-- **流式工具调用参数只在调用结束时解析一次**——安装的 pi-ai 带有 [`patches/@earendil-works__pi-ai@0.87.1.patch`](../../../patches/@earendil-works__pi-ai@0.87.1.patch)，它移除了每个流适配器中对整段累计参数 JSON 的逐 delta 重新解析（上游 [earendil-works/pi#9265](https://github.com/earendil-works/pi/issues/9265)）；未打补丁时，数 MB 的参数流会在事件循环上消耗 O(n²) CPU，并使进程内所有会话停滞。在 `toolcall_end` 之前，pi-ai partial 的工具调用 `arguments` 保持为 `{}`；本适配器只读取 delta 字符串与最终参数。每次升级 pi-ai 时都要重新应用或撤销该补丁。
++- **流式工具调用参数只在调用结束时解析一次**——安装的 pi-ai 带有 [`patches/@earendil-works__pi-ai.patch`](../../../patches/@earendil-works__pi-ai.patch)，它移除了每个流适配器中对整段累计参数 JSON 的逐 delta 重新解析（上游 [earendil-works/pi#9265](https://github.com/earendil-works/pi/issues/9265)）；未打补丁时，数 MB 的参数流会在事件循环上消耗 O(n²) CPU，并使进程内所有会话停滞。在 `toolcall_end` 之前，pi-ai partial 的工具调用 `arguments` 保持为 `{}`；本适配器只读取 delta 字符串与最终参数。
++- **依赖升级必须保留 pi-ai 补丁注册**——[`pnpm-workspace.yaml`](../../../pnpm-workspace.yaml)以 `@earendil-works/pi-ai@*` 注册稳定补丁，因此 `pnpm install` 会跨依赖版本重新应用它。不兼容的源码片段会使安装停止；缺少补充元数据时，目录加载会失败并提示检查补丁。维护者必须调整不兼容的片段，或撤销上游已经提供的修复。这些保证要求补丁和注册仍保留在 checkout 中；安装未包含它们的已发布 Harness 版本不会保留本地补丁。
+ 
+ <a id="dev-note"></a>
+ ### 开发备注
+diff --git a/packages/llm/llm-pi-ai/package.json b/packages/llm/llm-pi-ai/package.json
+index b5e821633e..16326f8c1a 100644
+--- a/packages/llm/llm-pi-ai/package.json
++++ b/packages/llm/llm-pi-ai/package.json
+@@ -41,7 +41,7 @@
+     "@deepseek-ai/dsh-brand": "workspace:*",
+     "@deepseek-ai/dsh-util-values": "workspace:*",
+     "@deepseek-ai/schemastery": "workspace:~",
+-    "@earendil-works/pi-ai": "^0.87.1"
++    "@earendil-works/pi-ai": "^0.99.1"
+   },
+   "devDependencies": {
+     "@deepseek-ai/cordis": "workspace:~",
+diff --git a/packages/llm/llm-pi-ai/tests/catalog.spec.ts b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
+index e6f5330e9b..dd4cfeb04a 100644
+--- a/packages/llm/llm-pi-ai/tests/catalog.spec.ts
++++ b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
+@@ -448,6 +448,30 @@ describe('catalog routes with per-model configuration', () => {
+       .toEqual(getBuiltinModels('deepseek').map(model => model.id).sort())
+   })
+ 
++  it('serves GPT-6.1 Sol through the GitHub Copilot route', async () => {
++    const ctx = await harness({ providers: { 'github-copilot': {} } })
++    const installed = getBuiltinModels('github-copilot').find(model => model.id === 'gpt-6.1-sol')
++    if (installed === undefined) throw new Error('the installed Copilot catalog lacks GPT-6.1 Sol')
++
++    expect(await ctx.llm.resolveModelInfo('github-copilot', 'gpt-6.1-sol')).toMatchObject({
++      provider: 'github-copilot',
++      id: 'gpt-6.1-sol',
++      name: 'GPT-6.1 Sol',
++      inputModalities: ['text', 'image'],
++      context: { contextWindow: installed.contextWindow },
++    })
++    const model = resolveProfiles({ 'github-copilot': {} }).get('github-copilot')?.piProvider
++      ?.getModels().find(candidate => candidate.id === 'gpt-6.1-sol')
++    expect(model).toMatchObject({
++      api: installed.api,
++      provider: 'github-copilot',
++      baseUrl: installed.baseUrl,
++      maxTokens: installed.maxTokens,
++      headers: installed.headers,
++      compat: installed.compat,
++    })
++  })
++
+   it('overrides one catalog model field and defaults the rest from the catalog', async () => {
+     const server = await mockServer([])
+     const [catalogModel] = getBuiltinModels('deepseek')
+diff --git a/packages/llm/llm-pi-ai/tests/copilot-patch.spec.ts b/packages/llm/llm-pi-ai/tests/copilot-patch.spec.ts
+new file mode 100644
+index 0000000000..9cff1d5279
+--- /dev/null
++++ b/packages/llm/llm-pi-ai/tests/copilot-patch.spec.ts
+@@ -0,0 +1,122 @@
++import { describe, expect, it } from 'vitest'
++import type { Api, Model } from '@earendil-works/pi-ai'
++import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
++import { githubCopilotProvider } from '@earendil-works/pi-ai/providers/github-copilot'
++import { completeGitHubCopilotCatalog } from '@earendil-works/pi-ai/providers/github-copilot-catalog'
++
++const ID = 'gpt-6.1-sol'
++
++function catalog(provider: 'openai' | 'github-copilot'): Record<string, Model<Api>> {
++  return Object.fromEntries(getBuiltinModels(provider).map(model => [model.id, structuredClone(model)]))
++}
++
++function inputs(): { copilot: Record<string, Model<Api>>; openai: Record<string, Model<Api>> } {
++  const model: Model<Api> = {
++    id: ID,
++    name: 'GPT-6.1 Sol',
++    api: 'openai-responses',
++    provider: 'openai',
++    baseUrl: 'https://api.openai.com/v1',
++    reasoning: true,
++    thinkingLevelMap: { low: 'low', high: 'high' },
++    input: ['text', 'image'],
++    cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
++    contextWindow: 272_000,
++    maxTokens: 128_000,
++    headers: { 'X-OpenAI-Only': 'unused' },
++    compat: { supportsToolSearch: true },
++  }
++  const transport: Model<Api> = {
++    ...model,
++    id: 'gpt-6-sol',
++    name: 'GPT-6 Sol',
++    provider: 'github-copilot',
++    baseUrl: 'https://api.individual.githubcopilot.com',
++    contextWindow: 1_000_000,
++    headers: { 'Copilot-Integration-Id': 'vscode-chat' },
++    compat: { supportsAdditionalTools: true },
++    inputLimits: { images: { resize: { maxWidth: 2000 } } },
++  }
++  return { copilot: { [transport.id]: transport }, openai: { [ID]: model } }
++}
++
++function required(catalog: Readonly<Record<string, Model<Api>>>, id: string): Model<Api> {
++  const model = catalog[id]
++  if (model === undefined) throw new Error(`fixture lacks ${id}`)
++  return model
++}
++
++describe('GitHub Copilot dependency patch', () => {
++  it('publishes GPT-6.1 Sol in the upstream catalog and provider', () => {
++    expect(getBuiltinModels('github-copilot').map(model => model.id)).toContain(ID)
++    expect(githubCopilotProvider().getModels().map(model => model.id)).toContain(ID)
++  })
++
++  it('combines current model facts with Copilot transport settings without changing its inputs', () => {
++    const { copilot, openai } = inputs()
++    const original = structuredClone({ copilot, openai })
++    const model = required(openai, ID)
++    const transport = required(copilot, 'gpt-6-sol')
++
++    const complete = completeGitHubCopilotCatalog(copilot, openai)
++
++    expect(complete[ID]).toEqual({
++      ...model,
++      provider: 'github-copilot',
++      baseUrl: transport.baseUrl,
++      contextWindow: transport.contextWindow,
++      headers: transport.headers,
++      compat: transport.compat,
++      inputLimits: transport.inputLimits,
++    })
++    expect(complete['gpt-6-sol']).toBe(transport)
++    expect({ copilot, openai }).toEqual(original)
++    expect(completeGitHubCopilotCatalog(complete, openai)).toBe(complete)
++  })
++
++  it('adopts updated source metadata without copying OpenAI endpoint settings', () => {
++    const { copilot, openai } = inputs()
++    const model = required(openai, ID)
++    const transport = required(copilot, 'gpt-6-sol')
++    model.maxTokens = 256_000
++    model.thinkingLevelMap = { high: 'new-high' }
++    transport.baseUrl = 'https://api.business.githubcopilot.com'
++    transport.contextWindow = 2_000_000
++    transport.headers = { 'Editor-Version': 'vscode/new' }
++
++    expect(completeGitHubCopilotCatalog(copilot, openai)[ID]).toMatchObject({
++      maxTokens: 256_000,
++      thinkingLevelMap: { high: 'new-high' },
++      baseUrl: transport.baseUrl,
++      contextWindow: 2_000_000,
++      headers: transport.headers,
++    })
++  })
++
++  it('keeps a future native Copilot entry even when the supplement sources disappear', () => {
++    const native = { ...required(catalog('github-copilot'), ID), contextWindow: 3_000_000 }
++    const copilot = { [ID]: native }
++
++    const complete = completeGitHubCopilotCatalog(copilot, {})
++
++    expect(complete).toBe(copilot)
++    expect(complete[ID]).toBe(native)
++  })
++
++  it.each(['openai-model', 'copilot-transport', 'api', 'headers', 'compat', 'inputLimits'] as const)(
++    'rejects an incompatible dependency catalog missing %s', (field) => {
++      const { copilot, openai } = inputs()
++      const transport = required(copilot, 'gpt-6-sol')
++      switch (field) {
++        case 'openai-model': Reflect.deleteProperty(openai, ID); break
++        case 'copilot-transport': delete copilot['gpt-6-sol']; break
++        case 'api': transport.api = 'anthropic-messages'; break
++        case 'headers': delete transport.headers; break
++        case 'compat': delete transport.compat; break
++        case 'inputLimits': delete transport.inputLimits; break
++      }
++
++      expect(() => completeGitHubCopilotCatalog(copilot, openai)).toThrow(/review the pi-ai patch/)
++    },
++  )
++})
+diff --git a/packages/llm/llm-pi-ai/tests/discovery.spec.ts b/packages/llm/llm-pi-ai/tests/discovery.spec.ts
+index bb3862e78a..d8b602114d 100644
+--- a/packages/llm/llm-pi-ai/tests/discovery.spec.ts
++++ b/packages/llm/llm-pi-ai/tests/discovery.spec.ts
+@@ -82,6 +82,14 @@ describe('catalog-route model discovery', () => {
+     expect(models.find(model => model.id === 'gpt-6-astra')).toMatchObject({ inputModalities: installed?.input })
+   })
+ 
++  it('offers Claude Sonnet 5.5 and GPT-6.1 Sol on GitHub Copilot', async () => {
++    const ctx = await harness()
++
++    const models = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'github-copilot' })
++
++    expect(models.map(model => model.id)).toEqual(expect.arrayContaining(['claude-sonnet-5.5', 'gpt-6.1-sol']))
++  })
++
+   it('answers from the installed registry, with capacities and no network call', async () => {
+     const server = await listingServer({ body: JSON.stringify({ data: [{ id: 'from-the-endpoint' }] }) })
+     const ctx = await harness()
+diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
+index 6beedfb3fb..22a9a5cc91 100644
+--- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
++++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
+@@ -83,6 +83,29 @@ async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }
+ }
+ 
+ describe('llm-pi-ai real dormant composition', () => {
++  it('discovers and lists the patched Copilot model after a profile edit', async () => {
++    const { ctx, settingsPath } = await loadComposition()
++    const discovered = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'github-copilot' })
++    expect(discovered.find(model => model.id === 'gpt-6.1-sol')).toMatchObject({
++      id: 'gpt-6.1-sol',
++      name: 'GPT-6.1 Sol',
++      inputModalities: ['text', 'image'],
++    })
++
++    await writeFile(settingsPath, [
++      '- id: llm-pi-ai',
++      '  config:',
++      '    providers:',
++      '      github-copilot: {}',
++      '',
++    ].join('\n'))
++    await vi.waitFor(() => {
++      expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['github-copilot'])
++    }, { timeout: 5000 })
++
++    expect((await ctx.llm.listModels('github-copilot')).map(model => model.id)).toContain('gpt-6.1-sol')
++  })
++
+   it('boots with zero routes and registers one the moment settings supply a profile', async () => {
+     vi.stubEnv('PI_COMPOSITION_KEY', '')
+     const server = await mockServer([{ events: textEvents }])
+diff --git a/patches/@earendil-works__pi-ai.patch b/patches/@earendil-works__pi-ai.patch
+new file mode 100644
+index 0000000000..367720f1a6
+--- /dev/null
++++ b/patches/@earendil-works__pi-ai.patch
+@@ -0,0 +1,133 @@
++diff --git a/dist/api/anthropic-messages.js b/dist/api/anthropic-messages.js
++--- a/dist/api/anthropic-messages.js
+++++ b/dist/api/anthropic-messages.js
++@@ -508,7 +508,6 @@ export const stream = (model, context, options) => {
++                         const block = blocks[index];
++                         if (block && block.type === "toolCall") {
++                             block.partialJson += event.delta.partial_json;
++-                            block.arguments = parseStreamingJson(block.partialJson);
++                             stream.push({
++                                 type: "toolcall_delta",
++                                 contentIndex: index,
++diff --git a/dist/api/bedrock-converse-stream.js b/dist/api/bedrock-converse-stream.js
++--- a/dist/api/bedrock-converse-stream.js
+++++ b/dist/api/bedrock-converse-stream.js
++@@ -460,7 +460,6 @@ function handleContentBlockDelta(event, blocks, output, stream) {
++     }
++     else if (delta?.toolUse && block?.type === "toolCall") {
++         block.partialJson = (block.partialJson || "") + (delta.toolUse.input || "");
++-        block.arguments = parseStreamingJson(block.partialJson);
++         stream.push({ type: "toolcall_delta", contentIndex: index, delta: delta.toolUse.input || "", partial: output });
++     }
++     else if (delta?.reasoningContent) {
++diff --git a/dist/api/mistral-conversations.js b/dist/api/mistral-conversations.js
++--- a/dist/api/mistral-conversations.js
+++++ b/dist/api/mistral-conversations.js
++@@ -554,6 +554,5 @@ async function consumeChatStream(model, output, stream, mistralStream) {
++                 : JSON.stringify(toolCall.function.arguments || {});
++             block.partialArgs = (block.partialArgs || "") + argsDelta;
++-            block.arguments = parseStreamingJson(block.partialArgs);
++             stream.push({
++                 type: "toolcall_delta",
++                 contentIndex: toolBlocksByKey.get(key),
++diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
++--- a/dist/api/openai-completions.js
+++++ b/dist/api/openai-completions.js
++@@ -438,7 +438,6 @@ export const stream = (model, context, options) => {
++                             if (toolCall.function?.arguments) {
++                                 delta = toolCall.function.arguments;
++                                 block.partialArgs = (block.partialArgs ?? "") + toolCall.function.arguments;
++-                                block.arguments = parseStreamingJson(block.partialArgs);
++                             }
++                             else if (toolCall.custom?.input) {
++                                 const nextInput = getCustomToolCallInput(block) + toolCall.custom.input;
++diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
++--- a/dist/api/openai-responses-shared.js
+++++ b/dist/api/openai-responses-shared.js
++@@ -547,7 +547,6 @@ export async function processResponsesStream(openaiStream, output, stream, model
++             if (!slot || slot.block.partialJson === undefined)
++                 continue;
++             slot.block.partialJson += event.delta;
++-            slot.block.arguments = parseStreamingJson(slot.block.partialJson);
++             pushToolCallDelta(slot, event.delta);
++         }
++         else if (event.type === "response.function_call_arguments.done") {
++diff --git a/dist/api/pi-messages.js b/dist/api/pi-messages.js
++--- a/dist/api/pi-messages.js
+++++ b/dist/api/pi-messages.js
++@@ -155,8 +155,6 @@ function createEventConverter(model) {
++             case "toolcall_delta": {
++                 const json = `${toolJson.get(event.contentIndex) ?? ""}${event.delta}`;
++                 toolJson.set(event.contentIndex, json);
++-                partial.content[event.contentIndex].arguments =
++-                    parseStreamingJson(json);
++                 break;
++             }
++             case "toolcall_end":
++diff --git a/dist/providers/github-copilot.models.js b/dist/providers/github-copilot.models.js
++--- a/dist/providers/github-copilot.models.js
+++++ b/dist/providers/github-copilot.models.js
++@@ -2,6 +2,8 @@
++ // Do not edit manually - run 'npm run generate-models' to update
++ import values from "./data/github-copilot.json" with { type: "json" };
++ import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog } from "../model-catalog.js";
++-export const GITHUB_COPILOT_MODELS = flattenChatModelCatalog("github-copilot", values);
+++import { OPENAI_MODELS } from "./openai.models.js";
+++import { completeGitHubCopilotCatalog } from "./github-copilot-catalog.js";
+++export const GITHUB_COPILOT_MODELS = completeGitHubCopilotCatalog(flattenChatModelCatalog("github-copilot", values), OPENAI_MODELS);
++ export const GITHUB_COPILOT_IMAGE_MODELS = flattenImageModelCatalog("github-copilot", values);
++ export const GITHUB_COPILOT_CLASSIFIER_MODELS = flattenClassifierModelCatalog("github-copilot", values);
++diff --git a/dist/providers/github-copilot-catalog.js b/dist/providers/github-copilot-catalog.js
++new file mode 100644
++--- /dev/null
+++++ b/dist/providers/github-copilot-catalog.js
++@@ -0,0 +1,35 @@
+++/** Complete missing Copilot metadata without replacing native upstream entries. */
+++export function completeGitHubCopilotCatalog(copilotModels, openaiModels) {
+++    const id = "gpt-6.1-sol";
+++    if (Object.hasOwn(copilotModels, id)) return copilotModels;
+++    const model = openaiModels[id];
+++    const transport = copilotModels["gpt-6-sol"];
+++    if (model === undefined
+++        || transport === undefined
+++        || model.api !== transport.api
+++        || transport.headers === undefined
+++        || transport.compat === undefined
+++        || transport.inputLimits === undefined) {
+++        throw new Error(
+++            "The GitHub Copilot GPT-6.1 Sol patch requires matching OpenAI GPT-6.1 Sol"
+++            + " and complete GitHub Copilot GPT-6 Sol transport metadata; review the pi-ai patch"
+++        );
+++    }
+++    return {
+++        ...copilotModels,
+++        [id]: {
+++            ...model,
+++            provider: "github-copilot",
+++            baseUrl: transport.baseUrl,
+++            contextWindow: transport.contextWindow,
+++            headers: transport.headers,
+++            compat: transport.compat,
+++            inputLimits: transport.inputLimits,
+++        },
+++    };
+++}
+++
+++// GitHub's supported-model list owns Copilot availability. Model capacities
+++// and reasoning levels come from pi-ai's OpenAI catalog; Copilot transport
+++// settings come from its GPT-6 Sol catalog entry. A native entry takes priority.
+++// https://docs.github.com/en/copilot/reference/ai-models/supported-models
++diff --git a/dist/providers/github-copilot-catalog.d.ts b/dist/providers/github-copilot-catalog.d.ts
++new file mode 100644
++--- /dev/null
+++++ b/dist/providers/github-copilot-catalog.d.ts
++@@ -0,0 +1,9 @@
+++import type { Api, Model } from "../types.js";
+++/**
+++ * Supplement an absent GPT-6.1 Sol entry; preserve a native Copilot entry.
+++ * @param copilotModels - installed Copilot models indexed by request id.
+++ * @param openaiModels - installed OpenAI models indexed by request id.
+++ * @returns the complete catalog, or the original catalog when the id exists.
+++ * @throws Error if the required model or Copilot transport metadata is absent.
+++ */
+++export declare function completeGitHubCopilotCatalog(copilotModels: Readonly<Record<string, Model<Api>>>, openaiModels: Readonly<Record<string, Model<Api>>>): Readonly<Record<string, Model<Api>>>;
+diff --git a/patches/@earendil-works__pi-ai@0.87.1.patch b/patches/@earendil-works__pi-ai@0.87.1.patch
+deleted file mode 100644
+index 227a183e12..0000000000
+--- a/patches/@earendil-works__pi-ai@0.87.1.patch
++++ /dev/null
+@@ -1,73 +0,0 @@
+-diff --git a/dist/api/anthropic-messages.js b/dist/api/anthropic-messages.js
+-index e1538a5dfcf2225da9dc3ec622576564ee7c8530..abb8f990d680ee247708ca774a467fc5774e28b0 100644
+---- a/dist/api/anthropic-messages.js
+-+++ b/dist/api/anthropic-messages.js
+-@@ -500,7 +500,6 @@ export const stream = (model, context, options) => {
+-                         const block = blocks[index];
+-                         if (block && block.type === "toolCall") {
+-                             block.partialJson += event.delta.partial_json;
+--                            block.arguments = parseStreamingJson(block.partialJson);
+-                             stream.push({
+-                                 type: "toolcall_delta",
+-                                 contentIndex: index,
+-diff --git a/dist/api/bedrock-converse-stream.js b/dist/api/bedrock-converse-stream.js
+-index 6bc6312906ec3d75f31d190994d21c87f1d0767d..7ff68fb60c3c1d9e3e7d2d2df8d4619593a67335 100644
+---- a/dist/api/bedrock-converse-stream.js
+-+++ b/dist/api/bedrock-converse-stream.js
+-@@ -453,7 +453,6 @@ function handleContentBlockDelta(event, blocks, output, stream) {
+-     }
+-     else if (delta?.toolUse && block?.type === "toolCall") {
+-         block.partialJson = (block.partialJson || "") + (delta.toolUse.input || "");
+--        block.arguments = parseStreamingJson(block.partialJson);
+-         stream.push({ type: "toolcall_delta", contentIndex: index, delta: delta.toolUse.input || "", partial: output });
+-     }
+-     else if (delta?.reasoningContent) {
+-diff --git a/dist/api/mistral-conversations.js b/dist/api/mistral-conversations.js
+-index 67f9341a6f7d855dce25054fd48cd9077e8e04a1..afdb5c2c873abb72ca8011b7e3f06a230dbe3e8a 100644
+---- a/dist/api/mistral-conversations.js
+-+++ b/dist/api/mistral-conversations.js
+-@@ -543,7 +543,6 @@ async function consumeChatStream(model, output, stream, mistralStream) {
+-                 ? toolCall.function.arguments
+-                 : JSON.stringify(toolCall.function.arguments || {});
+-             block.partialArgs = (block.partialArgs || "") + argsDelta;
+--            block.arguments = parseStreamingJson(block.partialArgs);
+-             stream.push({
+-                 type: "toolcall_delta",
+-                 contentIndex: toolBlocksByKey.get(key),
+-diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
+-index 48464f2bf56b9369d5c202e4f02fc4f13d35b412..d829f5e8e56e788d96fa7a82c0e3cfaef3fc1f63 100644
+---- a/dist/api/openai-completions.js
+-+++ b/dist/api/openai-completions.js
+-@@ -453,7 +453,6 @@ export const stream = (model, context, options) => {
+-                             if (toolCall.function?.arguments) {
+-                                 delta = toolCall.function.arguments;
+-                                 block.partialArgs = (block.partialArgs ?? "") + toolCall.function.arguments;
+--                                block.arguments = parseStreamingJson(block.partialArgs);
+-                             }
+-                             else if (toolCall.custom?.input) {
+-                                 const nextInput = getCustomToolCallInput(block) + toolCall.custom.input;
+-diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
+-index 43e463dbfd1e6cc437ebc680468036f47678de26..f4259772e289c326697ea7f2ece25954bfb5a520 100644
+---- a/dist/api/openai-responses-shared.js
+-+++ b/dist/api/openai-responses-shared.js
+-@@ -546,7 +546,6 @@ export async function processResponsesStream(openaiStream, output, stream, model
+-             if (!slot || slot.block.partialJson === undefined)
+-                 continue;
+-             slot.block.partialJson += event.delta;
+--            slot.block.arguments = parseStreamingJson(slot.block.partialJson);
+-             pushToolCallDelta(slot, event.delta);
+-         }
+-         else if (event.type === "response.function_call_arguments.done") {
+-diff --git a/dist/api/pi-messages.js b/dist/api/pi-messages.js
+-index 5b9cb1680c47083a9a36eefa93124c67c750fd42..dc5a43ebd801fa6d4b7897c3739b588d4d571d3a 100644
+---- a/dist/api/pi-messages.js
+-+++ b/dist/api/pi-messages.js
+-@@ -155,8 +155,6 @@ function createEventConverter(model) {
+-             case "toolcall_delta": {
+-                 const json = `${toolJson.get(event.contentIndex) ?? ""}${event.delta}`;
+-                 toolJson.set(event.contentIndex, json);
+--                partial.content[event.contentIndex].arguments =
+--                    parseStreamingJson(json);
+-                 break;
+-             }
+-             case "toolcall_end":
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 6c7ce04c19..eb607400d0 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -10,7 +10,7 @@ overrides:
+   '@deepseek-ai/schemastery': link:vendor/schemastery
+ 
+ patchedDependencies:
+-  '@earendil-works/pi-ai@0.87.1': b9bcce474fb2ac44633dff0fa722816a5bff5451b4575d5874035ea14ba70a4f
++  '@earendil-works/pi-ai@*': 98b307eb68d9b199a3705aaaec9763cdceece022bbc12852e9bf1f3a63ea3885
+   '@electron/osx-sign@1.3.3': 280e7b2816caf01423097d24e79107a66afeb563a348630ce9928ae8499a5861
+   '@fortune-sheet/core@1.0.4': 8791a230763dbf853fd65d627c68c31de37209992851377855e16cf08ea70532
+   '@fortune-sheet/react@1.0.4': 2932e52e79afcd4ced08cfa123b5eded786c85043da32f622f3e80af6fc96c37
+@@ -9692,8 +9692,8 @@ importers:
+         specifier: link:../../../vendor/schemastery
+         version: link:../../../vendor/schemastery
+       '@earendil-works/pi-ai':
+-        specifier: ^0.87.1
+-        version: 0.87.1(patch_hash=b9bcce474fb2ac44633dff0fa722816a5bff5451b4575d5874035ea14ba70a4f)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
++        specifier: ^0.99.1
++        version: 0.99.1(patch_hash=98b307eb68d9b199a3705aaaec9763cdceece022bbc12852e9bf1f3a63ea3885)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@smithy/signature-v4@5.7.4)(supports-color@9.4.0)(undici@8.10.0)(ws@8.21.0)(zod@4.4.3)
+     devDependencies:
+       '@deepseek-ai/cordis':
+         specifier: workspace:~
+@@ -15150,13 +15150,13 @@ packages:
+       search-insights:
+         optional: true
+ 
+-  '@earendil-works/pi-ai@0.87.1':
+-    resolution: {integrity: sha512-X/3PfQBnnoeVdO9Cv8zHghUMglzlgNZYGNzoPnbRoGnHl3Rw3TlA2UKSUB7BRHUOxMryHXYa8dnjWZlbRheDZA==}
++  '@earendil-works/pi-ai@0.99.1':
++    resolution: {integrity: sha512-4nV9JKc94iPX8bwdGPc2nTuVPKIPsffhnp3WoN9NYCNqbtoOF8LhYcIs/+Sn/alroqJK/5QRu6/Z6Ck+n0hyBA==}
+     engines: {node: '>=22.19.0'}
+     hasBin: true
+ 
+-  '@earendil-works/pi-telemetry@0.87.1':
+-    resolution: {integrity: sha512-MC6TRQH5lgMXpcN+Vku2WMI2T8BsiUPzMQHGo81uqFZD3/9O79WWJAysEDGuzduP6R4tvtgwMLwmqIxynM10JQ==}
++  '@earendil-works/pi-telemetry@0.99.1':
++    resolution: {integrity: sha512-9PBPjGk+TXRtuMianpqBbHBpYpyKusESF6rwdmgD0WTZSTUQXhcKEO0hAINRLuSwy4V7yPvXV+EVV0ONY7mbpQ==}
+     engines: {node: '>=22.19.0'}
+ 
+   '@electron-internal/extract-zip@1.0.5':
+@@ -20461,12 +20461,25 @@ packages:
+     resolution: {integrity: sha512-++Zlftm0kVLPmzC06t6epuWmcRMDbI4z5P3NNX979WA/k23+NtSOynEGzsVfZwguKw2mi5umVgnBlJQMwRz4Pg==}
+     engines: {node: '>=20'}
+ 
+-  openai@6.40.0:
+-    resolution: {integrity: sha512-MWtTjd/gQt4jpbji61NTgFWJLoY/PdRJ6wG9/ZDRMYNMlBKrCrSlkLI+KgHP1vR1qT6LKSAyAqIxno6lcK9JiA==}
++  openai@7.19.0:
++    resolution: {integrity: sha512-MX2s3u2L5racTO0CC/SWpCOasJQBCJrqLKXK+l82cAhdeF8mPMBEe/gxMm0ZFa2xpKpOFLRjxv5afYEZbBXmbQ==}
++    engines: {node: '>=22.0.0'}
+     peerDependencies:
+-      ws: ^8.18.0
++      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
++      '@smithy/hash-node': '>=4.3.0 <5'
++      '@smithy/signature-v4': '>=5.4.0 <6'
++      undici: '>=5 <9'
++      ws: ^8.21.0
+       zod: ^3.25 || ^4.0
+     peerDependenciesMeta:
++      '@aws-sdk/credential-provider-node':
++        optional: true
++      '@smithy/hash-node':
++        optional: true
++      '@smithy/signature-v4':
++        optional: true
++      undici:
++        optional: true
+       ws:
+         optional: true
+       zod:
+@@ -22668,28 +22681,32 @@ snapshots:
+     transitivePeerDependencies:
+       - '@algolia/client-search'
+ 
+-  '@earendil-works/pi-ai@0.87.1(patch_hash=b9bcce474fb2ac44633dff0fa722816a5bff5451b4575d5874035ea14ba70a4f)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)':
++  '@earendil-works/pi-ai@0.99.1(patch_hash=98b307eb68d9b199a3705aaaec9763cdceece022bbc12852e9bf1f3a63ea3885)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@smithy/signature-v4@5.7.4)(supports-color@9.4.0)(undici@8.10.0)(ws@8.21.0)(zod@4.4.3)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.124.0(zod@4.4.3)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+-      '@earendil-works/pi-telemetry': 0.87.1
++      '@earendil-works/pi-telemetry': 0.99.1
+       '@google/genai': 2.21.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))
+       '@smithy/node-http-handler': 4.12.1
+-      http-proxy-agent: 9.1.0
+-      https-proxy-agent: 9.1.0
+-      openai: 6.40.0(ws@8.21.0)(zod@4.4.3)
++      http-proxy-agent: 9.1.0(supports-color@9.4.0)
++      https-proxy-agent: 9.1.0(supports-color@9.4.0)
++      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.0)(ws@8.21.0)(zod@4.4.3)
+       partial-json: 0.1.7
+       typebox: 1.3.27
+     transitivePeerDependencies:
++      - '@aws-sdk/credential-provider-node'
+       - '@modelcontextprotocol/sdk'
++      - '@smithy/hash-node'
++      - '@smithy/signature-v4'
+       - bufferutil
+       - kerberos
+       - supports-color
++      - undici
+       - utf-8-validate
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-telemetry@0.87.1': {}
++  '@earendil-works/pi-telemetry@0.99.1': {}
+ 
+   '@electron-internal/extract-zip@1.0.5': {}
+ 
+@@ -26859,7 +26876,7 @@ snapshots:
+     transitivePeerDependencies:
+       - supports-color
+ 
+-  http-proxy-agent@9.1.0:
++  http-proxy-agent@9.1.0(supports-color@9.4.0):
+     dependencies:
+       agent-base: 9.0.0
+       debug: 4.4.3(supports-color@9.4.0)
+@@ -26918,7 +26935,7 @@ snapshots:
+     transitivePeerDependencies:
+       - supports-color
+ 
+-  https-proxy-agent@9.1.0:
++  https-proxy-agent@9.1.0(supports-color@9.4.0):
+     dependencies:
+       agent-base: 9.0.0
+       debug: 4.4.3(supports-color@9.4.0)
+@@ -28034,8 +28051,11 @@ snapshots:
+       powershell-utils: 0.2.1
+       wsl-utils: 1.0.0
+ 
+-  openai@6.40.0(ws@8.21.0)(zod@4.4.3):
++  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.0)(ws@8.21.0)(zod@4.4.3):
+     optionalDependencies:
++      '@aws-sdk/credential-provider-node': 3.972.84
++      '@smithy/signature-v4': 5.7.4
++      undici: 8.10.0
+       ws: 8.21.0
+       zod: 4.4.3
+ 
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index b9cf05ab45..edf58606d6 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -64,8 +64,8 @@ minimumReleaseAgeExclude:
+   - '@deepseek-ai/libreoffice-kit-wasm@0.1.1'
+   # Fresh pi-ai releases carry the model catalog updates that are the whole
+   # point of bumping it; waiting out the release age would defeat that.
+-  - '@earendil-works/pi-ai@0.87.1'
+-  - '@earendil-works/pi-telemetry@0.87.1'
++  - '@earendil-works/pi-ai@0.99.1'
++  - '@earendil-works/pi-telemetry@0.99.1'
+   - node-addon-native-custom-loader@0.1.6
+   - node-addon-require-builtin-darwin-arm64@0.1.6
+   - node-addon-require-builtin-darwin-x64@0.1.6
+@@ -98,7 +98,8 @@ minimumReleaseAgeExclude:
+   - '@trycua/cua-driver-win32-x64-msvc@0.28.0'
+   - '@trycua/cua-driver@0.28.0'
+ patchedDependencies:
+-  '@earendil-works/pi-ai@0.87.1': patches/@earendil-works__pi-ai@0.87.1.patch
++  # Apply across upgrades; an incompatible source hunk must fail installation.
++  '@earendil-works/pi-ai@*': patches/@earendil-works__pi-ai.patch
+   '@electron/osx-sign@1.3.3': patches/@electron__osx-sign@1.3.3.patch
+   '@fortune-sheet/core@1.0.4': patches/@fortune-sheet__core@1.0.4.patch
+   '@fortune-sheet/react@1.0.4': patches/@fortune-sheet__react@1.0.4.patch

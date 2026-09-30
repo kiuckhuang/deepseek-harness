@@ -82,6 +82,14 @@ describe('catalog-route model discovery', () => {
     expect(models.find(model => model.id === 'gpt-6-astra')).toMatchObject({ inputModalities: installed?.input })
   })
 
+  it('offers Claude Sonnet 5.5 and GPT-6.1 Sol on GitHub Copilot', async () => {
+    const ctx = await harness()
+
+    const models = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'github-copilot' })
+
+    expect(models.map(model => model.id)).toEqual(expect.arrayContaining(['claude-sonnet-5.5', 'gpt-6.1-sol']))
+  })
+
   it('answers from the installed registry, with capacities and no network call', async () => {
     const server = await listingServer({ body: JSON.stringify({ data: [{ id: 'from-the-endpoint' }] }) })
     const ctx = await harness()

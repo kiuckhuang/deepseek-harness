@@ -83,6 +83,29 @@ async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }
 }
 
 describe('llm-pi-ai real dormant composition', () => {
+  it('discovers and lists the patched Copilot model after a profile edit', async () => {
+    const { ctx, settingsPath } = await loadComposition()
+    const discovered = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'github-copilot' })
+    expect(discovered.find(model => model.id === 'gpt-6.1-sol')).toMatchObject({
+      id: 'gpt-6.1-sol',
+      name: 'GPT-6.1 Sol',
+      inputModalities: ['text', 'image'],
+    })
+
+    await writeFile(settingsPath, [
+      '- id: llm-pi-ai',
+      '  config:',
+      '    providers:',
+      '      github-copilot: {}',
+      '',
+    ].join('\n'))
+    await vi.waitFor(() => {
+      expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['github-copilot'])
+    }, { timeout: 5000 })
+
+    expect((await ctx.llm.listModels('github-copilot')).map(model => model.id)).toContain('gpt-6.1-sol')
+  })
+
   it('boots with zero routes and registers one the moment settings supply a profile', async () => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')
     const server = await mockServer([{ events: textEvents }])

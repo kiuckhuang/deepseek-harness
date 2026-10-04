@@ -1,5 +1,5 @@
 diff --git a/packages/llm/llm-pi-ai/README.i18n.yaml b/packages/llm/llm-pi-ai/README.i18n.yaml
-index 19311117b6..d9a55103f2 100644
+index 360574b758..143357c161 100644
 --- a/packages/llm/llm-pi-ai/README.i18n.yaml
 +++ b/packages/llm/llm-pi-ai/README.i18n.yaml
 @@ -27,8 +27,8 @@
@@ -14,7 +14,7 @@ index 19311117b6..d9a55103f2 100644
    en: 86b456496b54854e
    zh: ff77ca11d39ba8d2
 diff --git a/packages/llm/llm-pi-ai/README.md b/packages/llm/llm-pi-ai/README.md
-index 0e8a801b53..4f96851e4c 100644
+index ea0adbe524..ca9d0de14a 100644
 --- a/packages/llm/llm-pi-ai/README.md
 +++ b/packages/llm/llm-pi-ai/README.md
 @@ -96,7 +96,7 @@ A provider pi-ai ships a login for can be signed into through the harness author
@@ -27,7 +27,7 @@ index 0e8a801b53..4f96851e4c 100644
  ### Run with reasoning and wire compatibility
  
 diff --git a/packages/llm/llm-pi-ai/README.zh.md b/packages/llm/llm-pi-ai/README.zh.md
-index 5126fe25ed..1d9cb0a2e7 100644
+index 8a72e3867b..be99aa2446 100644
 --- a/packages/llm/llm-pi-ai/README.zh.md
 +++ b/packages/llm/llm-pi-ai/README.zh.md
 @@ -96,7 +96,7 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程

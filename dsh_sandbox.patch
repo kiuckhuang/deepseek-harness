@@ -1,8 +1,8 @@
 diff --git a/packages/sandbox/sandbox/README.md b/packages/sandbox/sandbox/README.md
-index 5e089c468c..64e4fe6b2d 100644
+index 94e8968ea8..9cea88c453 100644
 --- a/packages/sandbox/sandbox/README.md
 +++ b/packages/sandbox/sandbox/README.md
-@@ -132,7 +132,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
+@@ -131,7 +131,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
  ##### Exact error
  
  ```markdown
@@ -12,10 +12,10 @@ index 5e089c468c..64e4fe6b2d 100644
  
  #### Token effect
 diff --git a/packages/sandbox/sandbox/README.zh.md b/packages/sandbox/sandbox/README.zh.md
-index dc38008d98..e333118ddc 100644
+index 771bf1d108..cb5eb3df01 100644
 --- a/packages/sandbox/sandbox/README.zh.md
 +++ b/packages/sandbox/sandbox/README.zh.md
-@@ -132,7 +132,7 @@ kind: "package-reference"
+@@ -131,7 +131,7 @@ kind: "package-reference"
  ##### 精确错误
  
  ```markdown

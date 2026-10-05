@@ -30,6 +30,15 @@ describe('generic pass skip boundary', () => {
     expect(rewrite(localeKey, 'packages/extensions/ui-cordis/src/client/CordisPreparingRow.tsx', all).text).toBe(localeKey)
   })
 
+  it.each([
+    ['packages/client/ui-agent-preset/tests/section-store.client.spec.ts', "it.each([['standard', undefined], ['cordis', undefined]] as const)"],
+    ['packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts', "ctx.on('cordis/inspect-query', (request) => { requests.push(request) })"],
+    ['snapshots/session/cordis-inspect-liveness/client-fixture.mjs', "ctx.on('cordis/inspect-query-resolved', ({ requestId }) => { resolved.push(requestId) })"],
+    ['docs/user/guide/schedule.md', 'The `standard`, `cordis`, and `ptc` presets declare the four reminder tools.'],
+  ])('preserves the cordis preset id and inspector topics in %s', (file, line) => {
+    expect(rewrite(line, file, all).text).toBe(line)
+  })
+
   it('rewrites the same quoted token where it names the vendored package', () => {
     const source = "import type { Context } from 'cordis'"
     expect(rewrite(source, 'packages/example/src/index.ts', all).text).toBe("import type { Context } from '@deepseek-ai/cordis'")

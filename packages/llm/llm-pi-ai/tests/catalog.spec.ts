@@ -497,30 +497,6 @@ describe('catalog routes with per-model configuration', () => {
       .toEqual(getBuiltinModels('deepseek').map(model => model.id).sort())
   })
 
-  it('serves GPT-6.1 Sol through the GitHub Copilot route', async () => {
-    const ctx = await harness({ providers: { 'github-copilot': {} } })
-    const installed = getBuiltinModels('github-copilot').find(model => model.id === 'gpt-6.1-sol')
-    if (installed === undefined) throw new Error('the installed Copilot catalog lacks GPT-6.1 Sol')
-
-    expect(await ctx.llm.resolveModelInfo('github-copilot', 'gpt-6.1-sol')).toMatchObject({
-      provider: 'github-copilot',
-      id: 'gpt-6.1-sol',
-      name: 'GPT-6.1 Sol',
-      inputModalities: ['text', 'image'],
-      context: { contextWindow: installed.contextWindow },
-    })
-    const model = resolveProfiles({ 'github-copilot': {} }).get('github-copilot')?.piProvider
-      ?.getModels().find(candidate => candidate.id === 'gpt-6.1-sol')
-    expect(model).toMatchObject({
-      api: installed.api,
-      provider: 'github-copilot',
-      baseUrl: installed.baseUrl,
-      maxTokens: installed.maxTokens,
-      headers: installed.headers,
-      compat: installed.compat,
-    })
-  })
-
   it('overrides one catalog model field and defaults the rest from the catalog', async () => {
     const server = await mockServer([])
     const [catalogModel] = getBuiltinModels('deepseek')

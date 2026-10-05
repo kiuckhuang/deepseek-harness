@@ -1,5 +1,5 @@
 diff --git a/packages/llm/llm-pi-ai/README.i18n.yaml b/packages/llm/llm-pi-ai/README.i18n.yaml
-index 360574b758..17c19dfdbd 100644
+index 360574b758..143357c161 100644
 --- a/packages/llm/llm-pi-ai/README.i18n.yaml
 +++ b/packages/llm/llm-pi-ai/README.i18n.yaml
 @@ -27,8 +27,8 @@
@@ -8,72 +8,37 @@ index 360574b758..17c19dfdbd 100644
  /deepseek-ai-dsh-llm-pi-ai/use-this-package/resolve-the-model-catalog:
 -  en: 376f83206858b601
 -  zh: 38bb6993609c96a6
-+  en: 19c9b90d5aa252b7
-+  zh: 57dfbd0cb60983b7
++  en: 1c56f1a17bdae276
++  zh: eac0824f0362339a
  /deepseek-ai-dsh-llm-pi-ai/use-this-package/run-with-reasoning-and-wire-compatibility:
    en: 86b456496b54854e
    zh: ff77ca11d39ba8d2
-@@ -87,8 +87,8 @@
-   en: b6bd570c0159ba08
-   zh: 7d2d91eea6a8d830
- /deepseek-ai-dsh-llm-pi-ai/known-limitations-and-deferred-work:
--  en: bb240ee5dd3f81c7
--  zh: 884506a36f4aac62
-+  en: cdaea9fcaf2f8c08
-+  zh: 7a75660b207c888b
- /deepseek-ai-dsh-llm-pi-ai/known-limitations-and-deferred-work/dev-note:
-   en: 3678dd0f6642c2a5
-   zh: 75cbdd064cc64282
 diff --git a/packages/llm/llm-pi-ai/README.md b/packages/llm/llm-pi-ai/README.md
-index ea0adbe524..95ab9c8e81 100644
+index ea0adbe524..ca9d0de14a 100644
 --- a/packages/llm/llm-pi-ai/README.md
 +++ b/packages/llm/llm-pi-ai/README.md
-@@ -96,7 +96,9 @@ A provider pi-ai ships a login for can be signed into through the harness author
+@@ -96,7 +96,7 @@ A provider pi-ai ships a login for can be signed into through the harness author
  
  ### Resolve the model catalog
  
 -A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
 +A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later. The GitHub Copilot route also supplies GPT-6.1 Sol when the installed pi-ai catalog lacks it, using Copilot's advertised Responses protocol, context limit, and reasoning levels.
-+
-+The patched pi-ai catalog includes `gpt-6.1-sol` for GitHub Copilot. If the upstream Copilot catalog omits that id, the [dependency patch](../../../patches/@earendil-works__pi-ai.patch) combines pi-ai's OpenAI GPT-6.1 Sol model metadata with its GitHub Copilot GPT-6 Sol transport settings. A native upstream Copilot entry takes precedence without modification.
  
  ### Run with reasoning and wire compatibility
  
-@@ -229,7 +231,8 @@ These limits define where the adapter stops and future work begins. They are cur
- - **Only a leading in-history `system` message becomes pi-ai's `systemPrompt`** — this adapter uses pi-ai's single `systemPrompt` input, so a later `system` message, or a leading one when `GenerateOptions.system` is also set, folds into a `user` message at its position; provider-specific placement of the prompt follows pi-ai rather than a harness-owned wire override. Images in system or assistant history, including the leading system message, fail with `UNSUPPORTED_CONTENT` on both conversion paths.
- - **Provider HTTP status is unavailable** — pi-ai error events do not expose a stable HTTP status across providers.
- - **Retry policy is provider-owned, not an SDK retry** — pi-ai SDK retries stay disabled so durable agent steps and `llm/retry` events own every visible attempt, and direct `ctx.llm.stream()` calls remain single-attempt.
--- **Streamed tool-call arguments are parsed once, when the call ends** — the installed pi-ai carries [`patches/@earendil-works__pi-ai@0.87.1.patch`](../../../patches/@earendil-works__pi-ai@0.87.1.patch), which removes the per-delta re-parse of the whole accumulated argument JSON in every stream adapter (upstream [earendil-works/pi#9265](https://github.com/earendil-works/pi/issues/9265)); unpatched, a multi-megabyte argument stream costs O(n²) CPU on the event loop and stalls every session in the process. Until `toolcall_end`, a pi-ai partial's tool-call `arguments` stays `{}`; this adapter reads only the delta strings and the finalized arguments. Re-apply or retire the patch on every pi-ai upgrade.
-+- **Streamed tool-call arguments are parsed once, when the call ends** — the installed pi-ai carries [`patches/@earendil-works__pi-ai.patch`](../../../patches/@earendil-works__pi-ai.patch), which removes the per-delta re-parse of the whole accumulated argument JSON in every stream adapter (upstream [earendil-works/pi#9265](https://github.com/earendil-works/pi/issues/9265)); unpatched, a multi-megabyte argument stream costs O(n²) CPU on the event loop and stalls every session in the process. Until `toolcall_end`, a pi-ai partial's tool-call `arguments` stays `{}`; this adapter reads only the delta strings and the finalized arguments.
-+- **Dependency upgrades must retain the pi-ai patch registration** — [`pnpm-workspace.yaml`](../../../pnpm-workspace.yaml) registers the stable patch as `@earendil-works/pi-ai@*`, so `pnpm install` reapplies it across dependency versions. Incompatible source hunks stop installation; missing supplement metadata fails catalog loading with a patch-review diagnostic. Maintainers must rebase incompatible hunks or retire fixes upstream already supplies. These guarantees require the patch and registration to remain in the checkout; installing a published Harness version that does not include them does not preserve local patches.
- 
- <a id="dev-note"></a>
- ### Dev Note
 diff --git a/packages/llm/llm-pi-ai/README.zh.md b/packages/llm/llm-pi-ai/README.zh.md
-index 8a72e3867b..60a717d05d 100644
+index 8a72e3867b..be99aa2446 100644
 --- a/packages/llm/llm-pi-ai/README.zh.md
 +++ b/packages/llm/llm-pi-ai/README.zh.md
-@@ -96,7 +96,9 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程
+@@ -96,7 +96,7 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程
  
  ### 解析模型目录
  
 -profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。
 +profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。如果已安装的 pi-ai 目录尚未收录 GPT-6.1 Sol，GitHub Copilot 路由也会提供该模型，并采用 Copilot 公布的 Responses 协议、上下文上限和推理等级。
-+
-+打补丁后的 pi-ai 目录为 GitHub Copilot 提供 `gpt-6.1-sol`。如果上游 Copilot 目录没有该 id，[依赖补丁](../../../patches/@earendil-works__pi-ai.patch)会把 pi-ai 的 OpenAI GPT-6.1 Sol 模型元数据与 GitHub Copilot GPT-6 Sol 传输设置组合起来。上游原生 Copilot 条目优先，且不会被修改。
  
  ### 带推理（reasoning）与协议兼容运行
  
-@@ -229,7 +231,8 @@ pi-ai 事件变成 harness 的推理、文本、工具调用、用量与 finish
- - **只有历史中首条 `system` 消息会成为 pi-ai 的 `systemPrompt`**——本适配器使用 pi-ai 的单一 `systemPrompt` 输入，因此后续的 `system` 消息，或在同时设置了 `GenerateOptions.system` 时的首条消息，会在原位置折叠为 `user` 消息；系统提示词的提供方专属放置遵循 pi-ai，而非 harness 自有的协议覆盖。system 或 assistant 历史中的图片（包括首条系统消息中的图片）在两条转换路径上都会以 `UNSUPPORTED_CONTENT` 失败。
- - **提供方 HTTP 状态不可用**——pi-ai 错误事件不跨提供方暴露稳定 HTTP 状态。
- - **重试策略由提供方自有，而非 SDK 重试**——pi-ai SDK 重试保持禁用，因此持久 agent（智能体）步骤与 `llm/retry` 事件拥有每个可见尝试，直接 `ctx.llm.stream()` 调用仍是单次尝试。
--- **流式工具调用参数只在调用结束时解析一次**——安装的 pi-ai 带有 [`patches/@earendil-works__pi-ai@0.87.1.patch`](../../../patches/@earendil-works__pi-ai@0.87.1.patch)，它移除了每个流适配器中对整段累计参数 JSON 的逐 delta 重新解析（上游 [earendil-works/pi#9265](https://github.com/earendil-works/pi/issues/9265)）；未打补丁时，数 MB 的参数流会在事件循环上消耗 O(n²) CPU，并使进程内所有会话停滞。在 `toolcall_end` 之前，pi-ai partial 的工具调用 `arguments` 保持为 `{}`；本适配器只读取 delta 字符串与最终参数。每次升级 pi-ai 时都要重新应用或撤销该补丁。
-+- **流式工具调用参数只在调用结束时解析一次**——安装的 pi-ai 带有 [`patches/@earendil-works__pi-ai.patch`](../../../patches/@earendil-works__pi-ai.patch)，它移除了每个流适配器中对整段累计参数 JSON 的逐 delta 重新解析（上游 [earendil-works/pi#9265](https://github.com/earendil-works/pi/issues/9265)）；未打补丁时，数 MB 的参数流会在事件循环上消耗 O(n²) CPU，并使进程内所有会话停滞。在 `toolcall_end` 之前，pi-ai partial 的工具调用 `arguments` 保持为 `{}`；本适配器只读取 delta 字符串与最终参数。
-+- **依赖升级必须保留 pi-ai 补丁注册**——[`pnpm-workspace.yaml`](../../../pnpm-workspace.yaml)以 `@earendil-works/pi-ai@*` 注册稳定补丁，因此 `pnpm install` 会跨依赖版本重新应用它。不兼容的源码片段会使安装停止；缺少补充元数据时，目录加载会失败并提示检查补丁。维护者必须调整不兼容的片段，或撤销上游已经提供的修复。这些保证要求补丁和注册仍保留在 checkout 中；安装未包含它们的已发布 Harness 版本不会保留本地补丁。
- 
- <a id="dev-note"></a>
- ### 开发备注
 diff --git a/packages/llm/llm-pi-ai/src/catalog.ts b/packages/llm/llm-pi-ai/src/catalog.ts
 index a257feedba..df55aec2e8 100644
 --- a/packages/llm/llm-pi-ai/src/catalog.ts
@@ -113,7 +78,7 @@ index a257feedba..df55aec2e8 100644
  }
  
 diff --git a/packages/llm/llm-pi-ai/tests/catalog.spec.ts b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
-index e6f5330e9b..c287240064 100644
+index e6f5330e9b..12ec1a51ea 100644
 --- a/packages/llm/llm-pi-ai/tests/catalog.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
 @@ -12,12 +12,18 @@ import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-s
@@ -185,72 +150,11 @@ index e6f5330e9b..c287240064 100644
  describe('hand-declared providers', () => {
    it('serves a route pi-ai has never heard of from its own declaration', async () => {
      const server = await mockServer([{ events: textEvents }])
-@@ -448,6 +497,30 @@ describe('catalog routes with per-model configuration', () => {
-       .toEqual(getBuiltinModels('deepseek').map(model => model.id).sort())
-   })
- 
-+  it('serves GPT-6.1 Sol through the GitHub Copilot route', async () => {
-+    const ctx = await harness({ providers: { 'github-copilot': {} } })
-+    const installed = getBuiltinModels('github-copilot').find(model => model.id === 'gpt-6.1-sol')
-+    if (installed === undefined) throw new Error('the installed Copilot catalog lacks GPT-6.1 Sol')
-+
-+    expect(await ctx.llm.resolveModelInfo('github-copilot', 'gpt-6.1-sol')).toMatchObject({
-+      provider: 'github-copilot',
-+      id: 'gpt-6.1-sol',
-+      name: 'GPT-6.1 Sol',
-+      inputModalities: ['text', 'image'],
-+      context: { contextWindow: installed.contextWindow },
-+    })
-+    const model = resolveProfiles({ 'github-copilot': {} }).get('github-copilot')?.piProvider
-+      ?.getModels().find(candidate => candidate.id === 'gpt-6.1-sol')
-+    expect(model).toMatchObject({
-+      api: installed.api,
-+      provider: 'github-copilot',
-+      baseUrl: installed.baseUrl,
-+      maxTokens: installed.maxTokens,
-+      headers: installed.headers,
-+      compat: installed.compat,
-+    })
-+  })
-+
-   it('overrides one catalog model field and defaults the rest from the catalog', async () => {
-     const server = await mockServer([])
-     const [catalogModel] = getBuiltinModels('deepseek')
 diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-index 6beedfb3fb..04b02054f8 100644
+index 6beedfb3fb..79c12295a2 100644
 --- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-@@ -83,6 +83,29 @@ async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }
- }
- 
- describe('llm-pi-ai real dormant composition', () => {
-+  it('discovers and lists the patched Copilot model after a profile edit', async () => {
-+    const { ctx, settingsPath } = await loadComposition()
-+    const discovered = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'github-copilot' })
-+    expect(discovered.find(model => model.id === 'gpt-6.1-sol')).toMatchObject({
-+      id: 'gpt-6.1-sol',
-+      name: 'GPT-6.1 Sol',
-+      inputModalities: ['text', 'image'],
-+    })
-+
-+    await writeFile(settingsPath, [
-+      '- id: llm-pi-ai',
-+      '  config:',
-+      '    providers:',
-+      '      github-copilot: {}',
-+      '',
-+    ].join('\n'))
-+    await vi.waitFor(() => {
-+      expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['github-copilot'])
-+    }, { timeout: 5000 })
-+
-+    expect((await ctx.llm.listModels('github-copilot')).map(model => model.id)).toContain('gpt-6.1-sol')
-+  })
-+
-   it('boots with zero routes and registers one the moment settings supply a profile', async () => {
-     vi.stubEnv('PI_COMPOSITION_KEY', '')
-     const server = await mockServer([{ events: textEvents }])
-@@ -110,6 +133,40 @@ describe('llm-pi-ai real dormant composition', () => {
+@@ -110,6 +110,40 @@ describe('llm-pi-ai real dormant composition', () => {
      expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
    })
  

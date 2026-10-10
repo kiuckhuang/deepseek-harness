@@ -32,6 +32,7 @@ describe('generic pass skip boundary', () => {
 
   it.each([
     ['packages/client/ui-agent-preset/tests/section-store.client.spec.ts', "it.each([['standard', undefined], ['cordis', undefined]] as const)"],
+    ['apps/cli/tests/optional-bundle-transitions.e2e.ts', "const native = await agent('cordis')"],
     ['packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts', "ctx.on('cordis/inspect-query', (request) => { requests.push(request) })"],
     ['snapshots/session/cordis-inspect-liveness/client-fixture.mjs', "ctx.on('cordis/inspect-query-resolved', ({ requestId }) => { resolved.push(requestId) })"],
     ['docs/user/guide/schedule.md', 'The `standard`, `cordis`, and `ptc` presets declare the four reminder tools.'],

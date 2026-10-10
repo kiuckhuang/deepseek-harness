@@ -1,5 +1,5 @@
 diff --git a/packages/llm/llm-pi-ai/README.i18n.yaml b/packages/llm/llm-pi-ai/README.i18n.yaml
-index 360574b758..143357c161 100644
+index 4757fa8164..60c2301765 100644
 --- a/packages/llm/llm-pi-ai/README.i18n.yaml
 +++ b/packages/llm/llm-pi-ai/README.i18n.yaml
 @@ -27,8 +27,8 @@
@@ -11,10 +11,10 @@ index 360574b758..143357c161 100644
 +  en: 1c56f1a17bdae276
 +  zh: eac0824f0362339a
  /deepseek-ai-dsh-llm-pi-ai/use-this-package/run-with-reasoning-and-wire-compatibility:
-   en: 86b456496b54854e
-   zh: ff77ca11d39ba8d2
+   en: b58b917e7f250aee
+   zh: aff599081bac08c3
 diff --git a/packages/llm/llm-pi-ai/README.md b/packages/llm/llm-pi-ai/README.md
-index ea0adbe524..ca9d0de14a 100644
+index aa3b657f15..612b50ad06 100644
 --- a/packages/llm/llm-pi-ai/README.md
 +++ b/packages/llm/llm-pi-ai/README.md
 @@ -96,7 +96,7 @@ A provider pi-ai ships a login for can be signed into through the harness author
@@ -27,7 +27,7 @@ index ea0adbe524..ca9d0de14a 100644
  ### Run with reasoning and wire compatibility
  
 diff --git a/packages/llm/llm-pi-ai/README.zh.md b/packages/llm/llm-pi-ai/README.zh.md
-index 8a72e3867b..be99aa2446 100644
+index e74a26b012..1a2c2b700b 100644
 --- a/packages/llm/llm-pi-ai/README.zh.md
 +++ b/packages/llm/llm-pi-ai/README.zh.md
 @@ -96,7 +96,7 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程
@@ -40,10 +40,10 @@ index 8a72e3867b..be99aa2446 100644
  ### 带推理（reasoning）与协议兼容运行
  
 diff --git a/packages/llm/llm-pi-ai/src/catalog.ts b/packages/llm/llm-pi-ai/src/catalog.ts
-index a257feedba..df55aec2e8 100644
+index 6ccd0cae05..749c004e38 100644
 --- a/packages/llm/llm-pi-ai/src/catalog.ts
 +++ b/packages/llm/llm-pi-ai/src/catalog.ts
-@@ -194,13 +194,32 @@ export function catalogProviderIds(): readonly string[] {
+@@ -210,13 +210,32 @@ export function catalogProviderIds(): readonly string[] {
  }
  
  /**
@@ -51,7 +51,7 @@ index a257feedba..df55aec2e8 100644
 + * The installed catalog models for one route, indexed by model id. Copilot
 + * includes GPT-6.1 Sol when the installed pi-ai catalog has not added it yet.
   * @param provider - provider route key.
-  * @returns catalog models by id; empty for a route pi-ai does not ship.
+  * @returns catalog models by id; empty for a route {@link catalogProvider} does not return.
   */
  export function catalogModels(provider: string): Map<string, Model<Api>> {
    if (!catalogProviders().has(provider)) return new Map()
@@ -78,17 +78,10 @@ index a257feedba..df55aec2e8 100644
  }
  
 diff --git a/packages/llm/llm-pi-ai/tests/catalog.spec.ts b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
-index e6f5330e9b..12ec1a51ea 100644
+index 81b1b78e9e..a85e7dae26 100644
 --- a/packages/llm/llm-pi-ai/tests/catalog.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
-@@ -12,12 +12,18 @@ import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-s
- import { normalizeContext } from '@earendil-works/pi-ai/utils/transcript'
- import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-works/pi-ai'
- import { resolveProfiles } from '../src/config.ts'
-+import { catalogModels } from '../src/catalog.ts'
- import { createModels, createProvider, getSupportedThinkingLevels } from '../src/models.ts'
- import { buildProvider, supportedProtocols } from '../src/provider.ts'
- import { assemble } from './assemble.ts'
+@@ -19,6 +19,11 @@ import { assemble } from './assemble.ts'
  import { memoryAuth } from './auth-double.ts'
  import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
  
@@ -100,7 +93,7 @@ index e6f5330e9b..12ec1a51ea 100644
  declare module '@deepseek-ai/dsh-llm' {
    interface MessageSourceMap {
      'test': { kind: 'test' } & ContextFormed
-@@ -69,6 +75,49 @@ async function harness(config: LlmPiAi.Options): Promise<Context> {
+@@ -70,6 +75,49 @@ async function harness(config: LlmPiAi.Options): Promise<Context> {
    return ctx
  }
  
@@ -151,10 +144,10 @@ index e6f5330e9b..12ec1a51ea 100644
    it('serves a route pi-ai has never heard of from its own declaration', async () => {
      const server = await mockServer([{ events: textEvents }])
 diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-index 6beedfb3fb..79c12295a2 100644
+index ce2ceb8368..88cf9e0727 100644
 --- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-@@ -110,6 +110,40 @@ describe('llm-pi-ai real dormant composition', () => {
+@@ -114,6 +114,40 @@ describe('llm-pi-ai real dormant composition', () => {
      expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
    })
  
@@ -192,6 +185,6 @@ index 6beedfb3fb..79c12295a2 100644
 +    expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
 +  })
 +
-   it('uses settings-only route headers for model discovery', async () => {
-     vi.stubEnv('PI_COMPOSITION_KEY', '')
-     const server = await mockServer([{ body: JSON.stringify({ data: [{ id: 'acme-private' }] }) }])
+   it('offers OpenAI sign-in by API key only, while other subscription logins stay', async () => {
+     const { ctx } = await loadComposition()
+     const methods = (provider: string): string[] | undefined => ctx.authorization.list()

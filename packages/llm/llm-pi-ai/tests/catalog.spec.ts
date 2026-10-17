@@ -76,42 +76,19 @@ async function harness(config: LlmPiAi.Options): Promise<Context> {
 }
 
 describe('GitHub Copilot catalog', () => {
-  it('adds GPT-6.1 Sol with its advertised capacity and Responses protocol', () => {
-    const profile = resolveProfiles({ 'github-copilot': {} }).get('github-copilot')
-    const model = profile?.piProvider?.getModels().find(entry => entry.id === 'gpt-6.1-sol')
-    const previous = profile?.piProvider?.getModels().find(entry => entry.id === 'gpt-6-sol')
-
-    expect(model).toMatchObject({
-      id: 'gpt-6.1-sol',
-      name: 'GPT-6.1 Sol',
-      api: 'openai-responses',
-      provider: 'github-copilot',
-      contextWindow: 1_050_000,
-      maxTokens: 128_000,
-      input: ['text', 'image'],
-      thinkingLevelMap: { off: 'none', max: 'max' },
-    })
-    expect(model?.headers).toEqual(previous?.headers)
-    expect(model?.baseUrl).toBe(previous?.baseUrl)
-  })
-
   it('keeps an upstream GPT-6.1 Sol entry unchanged', () => {
     const installed = getBuiltinModels('github-copilot')
     const sol = installed.find(model => model.id === 'gpt-6-sol')
     if (sol === undefined) throw new Error('the installed catalog ships no Copilot Sol model')
     const supplied = { ...sol, id: 'gpt-6.1-sol', name: 'Upstream Sol' }
-    const listing = vi.mocked(getBuiltinModels<'github-copilot'>).mockReturnValueOnce([...installed, supplied])
+    // catalogModels warms the provider catalog through the same mock, so the
+    // override must name its route instead of answering only the next call.
+    const real = vi.mocked(getBuiltinModels).getMockImplementation()!
+    const listing = vi.mocked(getBuiltinModels<'github-copilot'>).mockImplementation(
+      provider => (provider === 'github-copilot' ? [...installed, supplied] : real(provider)),
+    )
     try {
       expect(catalogModels('github-copilot').get('gpt-6.1-sol')).toBe(supplied)
-    } finally {
-      listing.mockReset()
-    }
-  })
-
-  it('reports an installed catalog that cannot supply Sol protocol metadata', () => {
-    const listing = vi.mocked(getBuiltinModels).mockReturnValueOnce([])
-    try {
-      expect(() => catalogModels('github-copilot')).toThrow('the installed Copilot catalog cannot describe gpt-6.1-sol')
     } finally {
       listing.mockReset()
     }

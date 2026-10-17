@@ -1,5 +1,5 @@
 diff --git a/packages/llm/llm-pi-ai/README.i18n.yaml b/packages/llm/llm-pi-ai/README.i18n.yaml
-index 4757fa8164..60c2301765 100644
+index b751a19d3c..71b505a486 100644
 --- a/packages/llm/llm-pi-ai/README.i18n.yaml
 +++ b/packages/llm/llm-pi-ai/README.i18n.yaml
 @@ -27,8 +27,8 @@
@@ -14,7 +14,7 @@ index 4757fa8164..60c2301765 100644
    en: b58b917e7f250aee
    zh: aff599081bac08c3
 diff --git a/packages/llm/llm-pi-ai/README.md b/packages/llm/llm-pi-ai/README.md
-index aa3b657f15..612b50ad06 100644
+index af66591776..ff53f1d25f 100644
 --- a/packages/llm/llm-pi-ai/README.md
 +++ b/packages/llm/llm-pi-ai/README.md
 @@ -96,7 +96,7 @@ A provider pi-ai ships a login for can be signed into through the harness author
@@ -27,7 +27,7 @@ index aa3b657f15..612b50ad06 100644
  ### Run with reasoning and wire compatibility
  
 diff --git a/packages/llm/llm-pi-ai/README.zh.md b/packages/llm/llm-pi-ai/README.zh.md
-index e74a26b012..1a2c2b700b 100644
+index b5e79c14a2..f15840a3a0 100644
 --- a/packages/llm/llm-pi-ai/README.zh.md
 +++ b/packages/llm/llm-pi-ai/README.zh.md
 @@ -96,7 +96,7 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程
@@ -78,7 +78,7 @@ index 6ccd0cae05..749c004e38 100644
  }
  
 diff --git a/packages/llm/llm-pi-ai/tests/catalog.spec.ts b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
-index 81b1b78e9e..a85e7dae26 100644
+index e142027ae6..9a7afca273 100644
 --- a/packages/llm/llm-pi-ai/tests/catalog.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/catalog.spec.ts
 @@ -19,6 +19,11 @@ import { assemble } from './assemble.ts'
@@ -144,10 +144,10 @@ index 81b1b78e9e..a85e7dae26 100644
    it('serves a route pi-ai has never heard of from its own declaration', async () => {
      const server = await mockServer([{ events: textEvents }])
 diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-index ce2ceb8368..88cf9e0727 100644
+index 7c65de41f2..fa825d1d81 100644
 --- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-@@ -114,6 +114,40 @@ describe('llm-pi-ai real dormant composition', () => {
+@@ -121,6 +121,40 @@ describe('llm-pi-ai real dormant composition', () => {
      expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
    })
  

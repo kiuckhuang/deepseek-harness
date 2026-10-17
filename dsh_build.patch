@@ -1,8 +1,8 @@
 diff --git a/packages/client/tsdown.client.ts b/packages/client/tsdown.client.ts
-index 2e8c06b18e..d7f538640a 100644
+index 90b26c196e..b88f180619 100644
 --- a/packages/client/tsdown.client.ts
 +++ b/packages/client/tsdown.client.ts
-@@ -62,7 +62,7 @@ function styleInjectionModule(
+@@ -66,7 +66,7 @@ function styleInjectionModule(
   * Everything else under @deepseek-ai/* is either a module-table entry
   * (external) or a leak the purity gate rejects.
   */

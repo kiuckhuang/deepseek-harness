@@ -76,16 +76,18 @@ async function harness(config: LlmPiAi.Options): Promise<Context> {
 }
 
 describe('GitHub Copilot catalog', () => {
-  it('keeps an upstream GPT-6.1 Sol entry unchanged', () => {
+  it('keeps an upstream GPT-6.1 Sol entry unchanged', async () => {
     const installed = getBuiltinModels('github-copilot')
     const sol = installed.find(model => model.id === 'gpt-6-sol')
     if (sol === undefined) throw new Error('the installed catalog ships no Copilot Sol model')
     const supplied = { ...sol, id: 'gpt-6.1-sol', name: 'Upstream Sol' }
     // catalogModels warms the provider catalog through the same mock, so the
     // override must name its route instead of answering only the next call.
-    const real = vi.mocked(getBuiltinModels).getMockImplementation()!
+    const actual = await vi.importActual<typeof import('@earendil-works/pi-ai/providers/all')>(
+      '@earendil-works/pi-ai/providers/all',
+    )
     const listing = vi.mocked(getBuiltinModels<'github-copilot'>).mockImplementation(
-      provider => (provider === 'github-copilot' ? [...installed, supplied] : real(provider)),
+      provider => (provider === 'github-copilot' ? [...installed, supplied] : actual.getBuiltinModels(provider)),
     )
     try {
       expect(catalogModels('github-copilot').get('gpt-6.1-sol')).toBe(supplied)

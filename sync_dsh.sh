@@ -2,11 +2,12 @@
 set -Eeuo pipefail
 
 # Sync the current branch to upstream's default branch and regenerate the
-# dsh_*.patch layers from the merged branch. Each layer is derived against the
-# newest dsh-v* release tag, so the tag build mk_dsh.sh runs still applies it.
-# The branch is the source of truth for a downstream change; a layer is a
-# derived artifact. A change upstream has adopted empties its own layer, which
-# retires it visibly.
+# dsh_*.patch layers from the merged branch. Each layer is the branch's
+# difference from the upstream commit it merged, so it carries downstream work
+# only, and every layer is verified against the newest dsh-v* release tag that
+# mk_dsh.sh builds. The branch is the source of truth for a downstream change; a
+# layer is a derived artifact. A change upstream has adopted empties its own
+# layer, which retires it visibly.
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_DIR=${REPO_DIR:-$SCRIPT_DIR}
@@ -26,11 +27,12 @@ usage() {
 Usage: sync_dsh.sh [--check] [--patch FILE]... [--help]
 
 Merge upstream's default branch into the current branch, then regenerate every
-patch layer beside this script from the merged branch. Each layer is derived
-against the newest dsh-v* release tag, so the tag build mk_dsh.sh runs applies
-it unchanged. While a release is newer than the default branch — the window
-between the tag and its merge back — the release is merged instead, with the
-tag named in the diagnostic.
+patch layer beside this script from the merged branch. Each layer is the
+branch's difference from the upstream commit it merged, and every layer is
+verified against the newest dsh-v* release tag, whose build mk_dsh.sh runs.
+While a release is newer than the default branch — the window between the tag
+and its merge back — the release is merged instead, with the tag named in the
+diagnostic.
 
 Following the default branch rather than a release tag keeps the branch on one
 upstream line. A release tag is cut from a release branch and reaches the
@@ -39,7 +41,7 @@ conflicts every documentation path both lines touched.
 
 The branch is merged forward; it is never reset or rewritten. A conflicting
 merge is aborted and reported, so the caller resolves it once by hand and
-re-runs. A regenerated layer that no longer differs from the release is left
+re-runs. A regenerated layer that no longer differs from upstream is left
 empty, which mk_dsh.sh skips.
 
 Options:
@@ -52,7 +54,8 @@ Environment overrides:
   REMOTE            Git remote (default: upstream)
   UPSTREAM_URL      URL used when REMOTE is absent
   SYNC_REF          Upstream branch merged into this one (default: master)
-  RELEASE_REF       Tag the layers are derived against (default: latest dsh-v* tag)
+  BASE_REF          Commit the layers are derived from (default: the merged upstream commit)
+  RELEASE_REF       Tag every layer is verified against (default: latest dsh-v* tag)
   PATCH_DIR         Directory holding the layers (default: script directory)
   PATCH_GLOB        Layer filename pattern, no slash (default: dsh_*.patch)
   PATCHES           Whitespace-separated layer list; replaces discovery
@@ -206,6 +209,12 @@ if git merge-base --is-ancestor "$MERGE_COMMIT" HEAD; then
     info "$MERGE_REF ($MERGE_COMMIT) is already contained in $BRANCH"
 fi
 
+# A layer is the branch's difference from the upstream line it merged, not from
+# whichever release tag happens to be newest: upstream work that lands between a
+# release and its merge back belongs to upstream, and reproducing it inside a
+# layer would build a release with files from a tree that release never had.
+LAYER_BASE=${BASE_REF:-$MERGE_COMMIT}
+
 # DERIVE_REF is the tree the layers are the difference from. In sync mode it is
 # HEAD after the merge; in check mode it is the tree a real merge would produce,
 # so nothing is mutated while still deriving from the merged result.
@@ -238,35 +247,49 @@ layer_paths() {
     git apply --numstat -- "$1" 2>/dev/null | awk -F'\t' 'NF >= 3 { print $3 }'
 }
 
-# Regenerate one layer as the branch's difference from the release for the paths
+# Regenerate one layer as the branch's difference from LAYER_BASE for the paths
 # that layer already covers. An empty result retires the layer.
 regenerate_layer() {
-    local layer=$1 out=$2
+    local layer=$1 out=$2 base=${3:-$LAYER_BASE}
     local -a paths=()
     mapfile -t paths < <(layer_paths "$layer")
     if ((${#paths[@]} == 0)); then
         : >"$out"
         return 0
     fi
-    git diff --no-color --no-ext-diff "$RELEASE_COMMIT" "$DERIVE_REF" -- "${paths[@]}" >"$out"
+    git diff --no-color --no-ext-diff "$base" "$DERIVE_REF" -- "${paths[@]}" >"$out"
 }
 
 # Prove every regenerated layer still applies to a pristine release checkout.
+# A layer is the branch's difference from the upstream line it merged, so a path
+# upstream rewrote between the release and its default branch can leave the
+# layer without the release's own context. That layer is re-derived against the
+# release and re-checked; the warning marks a release build that mixes newer
+# upstream work into the layer.
 verify_layers() {
-    local -a regenerated=("$@")
-    local layer
+    local index layer
     info "verifying regenerated layers against $RELEASE_REF"
     WORKTREE=$(mktemp -d "${TMPDIR:-/tmp}/dsh-sync-verify.XXXXXX")
     rmdir "$WORKTREE"
     git worktree add --detach "$WORKTREE" "$RELEASE_COMMIT" >/dev/null
     WORKTREE_CREATED=1
-    for layer in "${regenerated[@]}"; do
+    for index in "${!PATCH_LAYERS[@]}"; do
+        layer=${STAGED_LAYERS[index]}
         if [[ ! -s "$layer" ]]; then
             printf '[skip]  %s: empty layer (no downstream difference remains)\n' "$layer"
             continue
         fi
-        git -C "$WORKTREE" apply --check "$layer" \
-            || die "regenerated layer does not apply to $RELEASE_REF: $layer"
+        if ! git -C "$WORKTREE" apply --check "$layer" 2>/dev/null; then
+            info "WARNING: ${PATCH_LAYERS[index]##*/} misses $RELEASE_REF context; re-deriving it against the release"
+            regenerate_layer "${PATCH_LAYERS[index]}" "$layer" "$RELEASE_COMMIT"
+            [[ -s "$layer" ]] || {
+                printf '[skip]  %s: empty after re-deriving against %s\n' "$layer" "$RELEASE_REF"
+                continue
+            }
+            git -C "$WORKTREE" apply --check "$layer" \
+                || die "regenerated layer does not apply to $RELEASE_REF: $layer"
+            info "WARNING: ${PATCH_LAYERS[index]##*/} carries upstream work newer than $RELEASE_REF; run mk_dsh.sh before shipping a release build"
+        fi
         git -C "$WORKTREE" apply "$layer"
         printf '[apply] %s\n' "$layer"
     done

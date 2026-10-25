@@ -1,146 +1,889 @@
 diff --git a/packages/client/tsdown.client.ts b/packages/client/tsdown.client.ts
-index 90b26c196e..b88f180619 100644
+index 90b26c196e..38a1a4cf4f 100644
 --- a/packages/client/tsdown.client.ts
 +++ b/packages/client/tsdown.client.ts
-@@ -66,7 +66,7 @@ function styleInjectionModule(
+@@ -6,18 +6,34 @@
+  * lightningcss inside the bundle: `x.module.css` yields its hashed class map
+  * and injects a tagged style at factory execution, while `x.css?inline`
+  * exports compiled text for a plugin-owned lifecycle effect. The virtual
+- * loaders register each real stylesheet as a watch dependency. SVG, PNG, and
+- * WebP imports become watched base64 data URLs inside the bundle.
++ * loaders register each real stylesheet as a watch dependency. Images under
++ * `src/client/assets/`, imported from Client code or referenced by relative
++ * `url()` in the package's own stylesheets, are emitted under `lib/assets/`
++ * with their content revision in the file name and become document-relative
++ * URLs served by the
++ * client-modules asset route; such a package exports `./assets/*` as
++ * `./lib/assets/*`, and its Node Client face rejects asset imports.
+  * Non-experimental client outputs reject experimental module and stylesheet
+  * inputs, including origins recorded by chained source maps.
+  */
+-import { readFile, stat, utimes } from 'node:fs/promises'
+-import { existsSync, readFileSync } from 'node:fs'
++import { randomBytes } from 'node:crypto'
++import { readFile, readdir, rm, rmdir, stat, utimes } from 'node:fs/promises'
++import { existsSync, readFileSync, realpathSync } from 'node:fs'
+ import { createRequire, isBuiltin } from 'node:module'
+-import { basename, dirname, extname, isAbsolute, relative, resolve as resolvePath, sep } from 'node:path'
++import { basename, dirname, isAbsolute, join, posix, relative, resolve as resolvePath, sep } from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ import { Rolldown, type TsdownPlugin, type UserConfig } from 'tsdown'
+-import { transform } from 'lightningcss'
++import { transform, type CustomAtRules, type Url, type Visitor } from 'lightningcss'
++import {
++  PACKAGE_ASSET_EXPORT,
++  PACKAGE_ASSET_EXPORT_TARGET,
++  PACKAGE_ASSET_FILES_ENTRY,
++  PACKAGE_ASSET_MEDIA_TYPES,
++  packageAssetMediaType,
++  packageAssetReference,
++  packageAssetRevision,
++  packageAssetRevisionedPath,
++} from './modules/src/assets.ts'
+ import { optionalStringArray } from './modules/src/client/manifest.ts'
+ import { PLATFORM_MODULES, PRELOADED_CLIENT_EXTERNALS } from './web/src/platform.ts'
+ import { clientBuildEnvironmentDefines, clientBuildValueDefines } from '../../scripts/client-build-environment.ts'
+@@ -35,10 +51,10 @@ const INLINE_CSS_VIRTUAL_PREFIX = '\0dsh-inline-css:'
+ const CSS_VIRTUAL_SUFFIX = '.mjs'
+ const INLINE_CSS_QUERY = '?inline'
+ 
+-/** Image imports become base64 data URLs embedded in the plugin's own bundle. */
+-const IMAGE_MEDIA_TYPES = new Map([['.svg', 'image/svg+xml'], ['.png', 'image/png'], ['.webp', 'image/webp']])
+-
+-/** Emit one plugin-owned style injector and an optional CSS Modules export. */
++/**
++ * Emit one plugin-owned style injector and an optional CSS Modules export.
++ * @param css - JavaScript expression yielding the stylesheet text; see {@link stylesheetSource}.
++ */
+ function styleInjectionModule(
+   id: string,
+   fileId: string,
+@@ -46,7 +62,7 @@ function styleInjectionModule(
+   classMap?: Readonly<Record<string, string>>,
+ ): string {
+   const source = [
+-    `const css = ${JSON.stringify(css)};`,
++    `const css = ${css};`,
+     `const tagId = ${JSON.stringify(`${id}/${basename(fileId)}`)};`,
+     'if (typeof document !== \'undefined\' && document.querySelector(\'style[data-plugin-css=\' + JSON.stringify(tagId) + \']\') === null) {',
+     '  const tag = document.createElement(\'style\');',
+@@ -66,7 +82,7 @@ function styleInjectionModule(
   * Everything else under @deepseek-ai/* is either a module-table entry
   * (external) or a leak the purity gate rejects.
   */
 -export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|session|llm|tools|brand|deque|output-retention|typert-protocol|util-crypto|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-native-command\/types$|@deepseek-ai\/dsh-host-open-in-app\/shared$|@deepseek-ai\/dsh-plugin-manager\/registry$|@deepseek-ai\/dsh-agent-preset-registry\/display$|@deepseek-ai\/dsh-api-workspace-controller\/default-workspace$|@deepseek-ai\/dsh-spill-policy\/notice$)/
-+export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|session|llm|tools|brand|deque|output-retention|typert-protocol|util-code-language|util-crypto|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-native-command\/types$|@deepseek-ai\/dsh-host-open-in-app\/shared$|@deepseek-ai\/dsh-plugin-manager\/registry$|@deepseek-ai\/dsh-agent-preset-registry\/display$|@deepseek-ai\/dsh-api-workspace-controller\/default-workspace$|@deepseek-ai\/dsh-spill-policy\/notice$)/
++export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|session|llm|tools|brand|official-bundles|deque|output-retention|typert-protocol|util-code-language|util-crypto|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-util-file-drag$|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-native-command\/types$|@deepseek-ai\/dsh-host-open-in-app\/shared$|@deepseek-ai\/dsh-plugin-manager\/registry$|@deepseek-ai\/dsh-agent-preset-registry\/display$|@deepseek-ai\/dsh-api-workspace-controller\/default-workspace$|@deepseek-ai\/dsh-spill-policy\/notice$)/
  
  /**
   * Vendored framework libraries: rescoped into @deepseek-ai, so the gate below
+@@ -74,7 +90,7 @@ export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|session|llm|
+  * identity to share — the framework itself is a requested module-table row
+  * (external), while these are ordinary libraries a browser bundle inlines.
+  */
+-const VENDORED_LIBRARY = /^@deepseek-ai\/(cosmokit|schemastery)(\/|$)/
++const VENDORED_LIBRARY = /^@deepseek-ai\/(?:(?:cosmokit|schemastery)(?:\/|$)|cordis-plugin-timer$)/
+ 
+ /** Generated descriptor/codec contribution with no shared runtime identity. */
+ const GENERATED_REMOTE = /^@deepseek-ai\/dsh-[a-z0-9]+(?:-[a-z0-9]+)*\/remote$/
+@@ -106,7 +122,9 @@ function browserSourcePath(source: string, sourcemapPath: string): string {
+  * original source content, into the standalone plugin map.
+  * @param packageDir - the package's own directory, normally the config's
+  * `import.meta.dirname`. Its `package.json` name is the plugin id stamped into
+- * the __ModuleLoader__.load handoff and onto the injected style tags.
++ * the __ModuleLoader__.load handoff and onto the injected style tags, and the
++ * owner segment of its asset URLs; its `src/client/assets/` holds the only
++ * images the browser bundle may reference.
+  * @param libEntry - node-half entries.
+  * @param options - phase placement, lib overrides, optional independently bundled Node Client, companion configs, and per-file Client banner.
+  * @returns ENV-selected tsdown config for the current build face.
+@@ -122,7 +140,7 @@ export function clientBundle(
+   return ({ env }) => {
+     const face = buildFace(env?.DSH_BUILD_FACE)
+     const clientEntry = face === undefined ? 'src/client/index.ts' : 'lib/types/client/index.js'
+-    const client = clientConfig(manifest, clientEntry, options.clientBanner, options.dualClient === true)
++    const client = clientConfig(manifest, packageDir, clientEntry, options.clientBanner, options.dualClient === true)
+     const node = [lib, ...(options.companions ?? [])]
+     const clientFaces = options.dualClient === true
+       ? [nodeClientConfig(manifest, clientEntry), client]
+@@ -277,6 +295,11 @@ interface AssetEmitter {
+   }): string
+ }
+ 
++/** The slice of the rolldown plugin context that emits and watches one package asset. */
++interface AssetContext extends AssetEmitter {
++  addWatchFile(id: string): void
++}
++
+ function staticLinkedConfig(id: string, entry: string, outputName = basename(entry, '.js')): UserConfig {
+   const emitted = new Set<string>()
+   const isolation = clientInputIsolation(id)
+@@ -358,6 +381,8 @@ interface PackageManifest {
+   readonly dependencies?: Record<string, string>
+   readonly peerDependencies?: Record<string, string>
+   readonly optionalDependencies?: Record<string, string>
++  /** Package exports; the browser face emits assets only while `./assets/*` publishes `lib/assets`. */
++  readonly exports?: Readonly<Record<string, unknown>>
+   readonly dsh?: { readonly client?: { readonly external?: unknown } }
+ }
+ 
+@@ -478,6 +503,255 @@ function asyncChunkRequirePlugin(): TsdownPlugin {
+   }
+ }
+ 
++/** Emitted asset directory below the browser config's `lib` outDir, published as {@link PACKAGE_ASSET_FILES_ENTRY}. */
++const ASSET_OUTPUT_DIR = posix.relative('lib', PACKAGE_ASSET_FILES_ENTRY)
++
++/** Characters the asset route rejects in a decoded path segment, because Node resolves export subpaths as URL text. */
++const UNSERVABLE_ASSET_SEGMENT = /[%#?\\\0]/
++
++/** A `url()` value with a scheme, such as `data:` or `https:`, which names no package file. */
++const URL_SCHEME = /^[a-z][a-z\d+.-]*:/i
++
++/**
++ * Free identifier an asset reference compiles to before rendering; the CommonJS
++ * render turns each call into `require.asset(...)`, the module loader's
++ * synchronous asset resolver, which returns the reference unchanged unless its
++ * carrier maps it. The fixed hexadecimal suffix keeps plugin strings that happen
++ * to contain the shorter prefix out of that rewrite, and keeps the source maps
++ * that carry the loaded module text byte-stable across builds.
++ */
++const PACKAGE_ASSET_CALL = '__dshPackageAsset_5f8e2c1a9b7d'
++
++/** Compile one asset reference into the resolver call. */
++function packageAssetCall(reference: string): string {
++  return `${PACKAGE_ASSET_CALL}(${JSON.stringify(reference)})`
++}
++
++/**
++ * Compile stylesheet text into a JavaScript expression that passes each package-asset
++ * reference the `url()` rewrite inserted through the resolver call. The rewrite writes
++ * a placeholder of letters, digits, and underscores, which lightningcss never escapes,
++ * with a per-stylesheet random part that stylesheet text cannot contain by chance.
++ * A placeholder may appear several times or not at all, as when minification copies
++ * or drops a declaration.
++ * @param css - stylesheet text after the rewrite.
++ * @param references - reference of each placeholder the rewrite inserted into this stylesheet.
++ * @returns a string literal, or a concatenation of literals and resolver calls.
++ */
++function stylesheetSource(css: string, references: ReadonlyMap<string, string>): string {
++  if (references.size === 0) return JSON.stringify(css)
++  const parts: string[] = []
++  let last = 0
++  for (const match of css.matchAll(new RegExp([...references.keys()].join('|'), 'gu'))) {
++    parts.push(JSON.stringify(css.slice(last, match.index)), packageAssetCall(references.get(match[0]) as string))
++    last = match.index + match[0].length
++  }
++  parts.push(JSON.stringify(css.slice(last)))
++  return parts.join(' + ')
++}
++
++/** One stylesheet's `url()` rewrite: the lightningcss options and the references they insert while transforming. */
++interface StylesheetAssets {
++  /** lightningcss options; empty when the stylesheet lies outside the package's own `src`. */
++  readonly options: { readonly visitor?: Visitor<CustomAtRules> }
++  /** Reference of each placeholder inserted during the transform that uses {@link options}. */
++  readonly references: ReadonlyMap<string, string>
++}
++
++/** Browser-face package assets: the import plugin and the stylesheet `url()` rewrite share one per-build emission record. */
++interface PackageAssets {
++  /** `dsh-package-asset`: resolves asset imports, emits referenced files, and prunes stale `lib/assets` files after writing. */
++  readonly plugin: TsdownPlugin
++  /**
++   * Select the lightningcss options that rewrite one stylesheet's relative `url()` values.
++   * @param context - plugin context of the stylesheet loader, which emits each referenced asset.
++   * @param stylesheet - physical stylesheet path.
++   * @returns a `url()` visitor when the stylesheet lies inside the package's own `src`, otherwise no options,
++   *   and the references the visitor inserts.
++   * @throws {Error} from the visitor when a relative `url()` does not name a publishable package asset.
++   */
++  urlRewrite(context: AssetContext, stylesheet: string): StylesheetAssets
++}
++
++/**
++ * Build the package-asset rules of one dynamic browser bundle. A referenced
++ * file must lie under the package's own `src/client/assets/`, have a supported
++ * extension, and be published by the `./assets/*` export; it is emitted once
++ * per build under `lib/assets/` at its relative path with the content revision
++ * inserted before the extension, and the reference compiles to the module loader's
++ * synchronous resolver call on its document-relative URL.
++ * A one-shot build deletes files under `lib/assets/` that it did not emit; a
++ * watch build keeps them for pages still running an earlier generation.
++ * @param manifest - the package's own manifest, naming the URL owner and declaring the asset export.
++ * @param packageDir - the package's own directory.
++ * @returns the plugin and stylesheet visitor sharing the per-build emission record.
++ */
++function packageAssets(manifest: PackageManifest, packageDir: string): PackageAssets {
++  const name = manifest.name
++  const sourceDir = resolvePath(packageDir, 'src')
++  const assetsDir = resolvePath(sourceDir, 'client', 'assets')
++  /** Reference of every asset emitted in the current build, keyed by its real path. */
++  const references = new Map<string, string>()
++
++  const reference = (context: AssetContext, file: string): string => {
++    let realPath: string
++    try {
++      realPath = realpathSync(file)
++    } catch (error) {
++      throw new Error(`tsdown: ${name}: cannot resolve asset ${file}`, { cause: error })
++    }
++    const emitted = references.get(realPath)
++    if (emitted !== undefined) return emitted
++    const below = pathBelow(realDirectory(assetsDir), realPath)
++    if (below === undefined) throw new Error(`tsdown: ${name}: ${file} is outside src/client/assets; move the asset there`)
++    const assetPath = below.split(sep).join('/')
++    if (assetPath.split('/').some(segment => UNSERVABLE_ASSET_SEGMENT.test(segment) || segment.toLowerCase() === 'node_modules')) {
++      throw new Error(`tsdown: ${name}: ${file} has a node_modules path segment or one containing %, #, ?, \\ or NUL, which the asset route cannot serve; rename it`)
++    }
++    const extension = posix.extname(assetPath)
++    if (extension !== extension.toLowerCase()) {
++      throw new Error(`tsdown: ${name}: ${file} has an uppercase extension; asset imports are typed by lowercase extensions, so rename it`)
++    }
++    if (manifest.exports?.[PACKAGE_ASSET_EXPORT] !== PACKAGE_ASSET_EXPORT_TARGET) {
++      throw new Error(
++        `tsdown: ${name}: ${file} needs package.json exports ${JSON.stringify({ [PACKAGE_ASSET_EXPORT]: PACKAGE_ASSET_EXPORT_TARGET })} `
++        + `and ${JSON.stringify(PACKAGE_ASSET_FILES_ENTRY)} in files`,
++      )
++    }
++    if (packageAssetMediaType(assetPath) === undefined) {
++      throw new Error(`tsdown: ${name}: ${file} is not a supported asset; supported extensions: ${[...PACKAGE_ASSET_MEDIA_TYPES.keys()].join(', ')}`)
++    }
++    const bytes = readFileSync(realPath)
++    const emittedPath = packageAssetRevisionedPath(assetPath, packageAssetRevision(bytes))
++    context.emitFile({ type: 'asset', fileName: `${ASSET_OUTPUT_DIR}/${emittedPath}`, source: bytes, originalFileName: realPath })
++    context.addWatchFile(realPath)
++    const url = packageAssetReference(name, emittedPath)
++    references.set(realPath, url)
++    return url
++  }
++
++  return {
++    plugin: {
++      name: 'dsh-package-asset',
++      buildStart() { references.clear() },
++      resolveId(source, importer) {
++        if (importer === undefined || packageAssetMediaType(source) === undefined) return null
++        return sourceAssetPath(source, importer)
++      },
++      load(id) {
++        if (!isAbsolute(id) || packageAssetMediaType(id) === undefined) return null
++        return `export default ${packageAssetCall(reference(this, id))};`
++      },
++      renderChunk(code, _chunk, outputOptions) {
++        if (outputOptions.format !== 'cjs' || !code.includes(PACKAGE_ASSET_CALL)) return null
++        const transformed = new Rolldown.RolldownMagicString(code)
++        for (const match of code.matchAll(new RegExp(`\\b${PACKAGE_ASSET_CALL}\\(`, 'gu'))) {
++          transformed.overwrite(match.index, match.index + match[0].length, 'require.asset(')
++        }
++        return transformed
++      },
++      async writeBundle(outputOptions, bundle) {
++        // A watch rebuild keeps earlier files: the Host still serves the previous
++        // bundle generation, and pages running it request those asset names.
++        if (this.meta.watchMode || outputOptions.dir === undefined) return
++        const outDir = outputOptions.dir
++        const assets = resolvePath(outDir, ASSET_OUTPUT_DIR)
++        if (!existsSync(assets)) return
++        await pruneDirectory(assets, file => relative(outDir, file).split(sep).join('/') in bundle)
++      },
++    },
++    urlRewrite(context, stylesheet) {
++      const inserted = new Map<string, string>()
++      const nonce = randomBytes(6).toString('hex')
++      if (pathBelow(realDirectory(sourceDir), realpathSync(stylesheet)) === undefined) return { options: {}, references: inserted }
++      const base = dirname(stylesheet)
++      const rewrite = (url: Url): Url | undefined => {
++        // Empty values, fragments, root-relative paths, schemes such as `data:`, and placeholders name no package file.
++        if (url.url === '' || url.url.startsWith('#') || url.url.startsWith('/') || URL_SCHEME.test(url.url)) return undefined
++        if (inserted.has(url.url)) return undefined
++        if (/[#?]/u.test(url.url)) {
++          throw new Error(`tsdown: ${name}: ${stylesheet} references ${JSON.stringify(url.url)}; a package asset url() takes no fragment or query`)
++        }
++        const placeholder = `__dshPackageAsset_${nonce}_${String(inserted.size)}__`
++        inserted.set(placeholder, reference(context, resolvePath(base, url.url)))
++        return { ...url, url: placeholder }
++      }
++      return {
++        options: {
++          visitor: {
++            Url: url => rewrite(url),
++            // lightningcss does not visit the urls inside image-set(), so its options are rewritten here.
++            Image(image) {
++              if (image.type !== 'image-set') return undefined
++              const options = image.value.options.map((option) => {
++                const url = option.image.type === 'url' ? rewrite(option.image.value) : undefined
++                return url === undefined ? option : { ...option, image: { type: 'url' as const, value: url } }
++              })
++              return { ...image, value: { ...image.value, options } }
++            },
++          },
++        },
++        references: inserted,
++      }
++    },
++  }
++}
++
++/** Real path of an existing directory, or undefined when it does not exist. */
++function realDirectory(directory: string): string | undefined {
++  return existsSync(directory) ? realpathSync(directory) : undefined
++}
++
++/**
++ * Locate a real path strictly inside a real directory.
++ * @param root - real directory path, or undefined when the directory does not exist.
++ * @param file - real file path.
++ * @returns the platform-separated path of `file` below `root`, or undefined when it is not inside.
++ */
++function pathBelow(root: string | undefined, file: string): string | undefined {
++  if (root === undefined) return undefined
++  const path = relative(root, file)
++  return path === '' || path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path) ? undefined : path
++}
++
++/**
++ * Delete every file a predicate rejects below a directory, then every directory left empty.
++ * @param directory - directory to prune; removed itself when nothing remains.
++ * @param keep - whether a file path survives.
++ * @returns whether the directory was removed.
++ */
++async function pruneDirectory(directory: string, keep: (file: string) => boolean): Promise<boolean> {
++  let remaining = 0
++  for (const entry of await readdir(directory, { withFileTypes: true })) {
++    const path = join(directory, entry.name)
++    if (entry.isDirectory()) {
++      if (!(await pruneDirectory(path, keep))) remaining++
++    } else if (keep(path)) {
++      remaining++
++    } else {
++      await rm(path)
++    }
++  }
++  if (remaining > 0) return false
++  await rmdir(directory)
++  return true
++}
++
++/**
++ * Reject asset imports in a Node Client face, which has no asset route.
++ * @param id - package name, used in diagnostics.
++ * @returns a plugin whose resolveId throws for every supported asset extension.
++ */
++function browserOnlyAssets(id: string): TsdownPlugin {
++  return {
++    name: 'dsh-package-asset-browser-only',
++    resolveId(source) {
++      if (packageAssetMediaType(source) === undefined) return null
++      throw new Error(`tsdown: ${id}: asset imports are browser-only (${source})`)
++    },
++  }
++}
++
+ /** Bundle the Client entry for plain Node independently of the Host entry and browser factory. */
+ function nodeClientConfig(manifest: PackageManifest, entry: string): UserConfig {
+   const isolation = clientInputIsolation(manifest.name)
+@@ -486,7 +760,7 @@ function nodeClientConfig(manifest: PackageManifest, entry: string): UserConfig
+     entry: { 'client.node': entry },
+     sourcemap: true,
+     inputOptions: { resolve: { conditionNames: ['node', 'import', 'module', 'default'] } },
+-    plugins: [tscSourceMapPlugin(), isolation.plugin],
++    plugins: [browserOnlyAssets(manifest.name), tscSourceMapPlugin(), isolation.plugin],
+     outputOptions: {
+       entryFileNames: 'client.node.js',
+       chunkFileNames: 'client.node.[name].js',
+@@ -498,6 +772,7 @@ function nodeClientConfig(manifest: PackageManifest, entry: string): UserConfig
+ 
+ function clientConfig(
+   manifest: PackageManifest,
++  packageDir: string,
+   entry: string,
+   clientBanner?: (fileName: string) => string | undefined,
+   dualClient = false,
+@@ -506,6 +781,7 @@ function clientConfig(
+   let requested: ReadonlySet<string> | undefined
+   const isRequested = (specifier: string): boolean => (requested ??= clientExternals(manifest)).has(specifier)
+   const isolation = clientInputIsolation(id)
++  const assets = packageAssets(manifest, packageDir)
+   return {
+     name: `${id}/client`,
+     entry: { client: entry },
+@@ -589,17 +865,19 @@ function clientConfig(
+         // The virtual id otherwise hides the physical stylesheet from Rolldown's watch graph.
+         this.addWatchFile(fileId)
+         const source = await readFile(fileId)
++        const stylesheetAssets = assets.urlRewrite(this, fileId)
+         const { code, exports: cssExports } = transform({
+           filename: fileId,
+           code: source,
+           cssModules: { pattern: '[hash]_[local]' },
+           minify: true,
++          ...stylesheetAssets.options,
+         })
+         const classMap: Record<string, string> = {}
+         const exportEntries = Object.entries(cssExports ?? {})
+           .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+         for (const [local, exp] of exportEntries) classMap[local] = exp.name
+-        return styleInjectionModule(id, fileId, code.toString(), classMap)
++        return styleInjectionModule(id, fileId, stylesheetSource(code.toString(), stylesheetAssets.references), classMap)
+       },
+     }, {
+       name: 'dsh-css-text-inline',
+@@ -614,8 +892,9 @@ function clientConfig(
+         const fileId = virtualId.slice(INLINE_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+         this.addWatchFile(fileId)
+         const source = await readFile(fileId)
+-        const { code } = transform({ filename: fileId, code: source, minify: true })
+-        return `export default ${JSON.stringify(code.toString())};`
++        const stylesheetAssets = assets.urlRewrite(this, fileId)
++        const { code } = transform({ filename: fileId, code: source, minify: true, ...stylesheetAssets.options })
++        return `export default ${stylesheetSource(code.toString(), stylesheetAssets.references)};`
+       },
+     }, {
+       name: 'dsh-css-global-inline',
+@@ -629,23 +908,11 @@ function clientConfig(
+         const fileId = virtualId.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+         this.addWatchFile(fileId)
+         const source = await readFile(fileId)
+-        const { code } = transform({ filename: fileId, code: source, minify: true })
+-        return styleInjectionModule(id, fileId, code.toString())
++        const stylesheetAssets = assets.urlRewrite(this, fileId)
++        const { code } = transform({ filename: fileId, code: source, minify: true, ...stylesheetAssets.options })
++        return styleInjectionModule(id, fileId, stylesheetSource(code.toString(), stylesheetAssets.references))
+       },
+-    }, {
+-      name: 'dsh-image-inline',
+-      resolveId(source: string, importer: string | undefined) {
+-        if (importer === undefined || !IMAGE_MEDIA_TYPES.has(extname(source))) return null
+-        return sourceAssetPath(source, importer)
+-      },
+-      async load(fileId: string) {
+-        const mediaType = IMAGE_MEDIA_TYPES.get(extname(fileId))
+-        if (mediaType === undefined) return null
+-        this.addWatchFile(fileId)
+-        const data = await readFile(fileId)
+-        return `export default ${JSON.stringify(`data:${mediaType};base64,${data.toString('base64')}`)};`
+-      },
+-    }],
++    }, assets.plugin],
+     outputOptions: {
+       entryFileNames: dualClient ? 'client.browser.js' : 'client.js',
+       // The imported source basename becomes the published chunk name; package
 diff --git a/scripts/rescope-vendor.spec.ts b/scripts/rescope-vendor.spec.ts
-index f05658ce64..7ab1ee2275 100644
+index f05658ce64..18755ce397 100644
 --- a/scripts/rescope-vendor.spec.ts
 +++ b/scripts/rescope-vendor.spec.ts
-@@ -1,7 +1,7 @@
+@@ -1,11 +1,18 @@
  /** Recorded npm evidence stays intact while authored files and exact edits remain checked. */
  
++import { readFileSync } from 'node:fs'
  import { describe, expect, it } from 'vitest'
 -import { exactEditState, isRescopeExcluded } from './rescope-vendor.ts'
-+import { exactEditState, isRescopeExcluded, patterns, rewrite } from './rescope-vendor.ts'
++import { exactEditState, isRescopeExcluded, rescopeText } from './rescope-vendor.ts'
  
  const ANCHOR = '\n## Sync procedure'
  const INSERTED = `\n15. **rescope**: one log entry.\n${ANCHOR}`
-@@ -22,6 +22,30 @@ describe('rescope file selection', () => {
+ 
++function expectRoundTrip(file: string, text: string, scoped: string, lines: number): void {
++  expect(rescopeText(text, file)).toEqual({ text: scoped, lines })
++  expect(rescopeText(scoped, file)).toEqual({ text: scoped, lines: 0 })
++  expect(rescopeText(scoped, file, true)).toEqual({ text, lines })
++}
++
+ describe('rescope file selection', () => {
+   it('preserves the recorded npm resolution', () => {
+     expect(isRescopeExcluded('scripts/dependency-catalog/package-lock.json')).toBe(true)
+@@ -51,3 +58,141 @@ describe('exactEditState', () => {
+     expect(exactEditState('x\n', 'a = 1', 'b = 2', 1)).toBe('invalid')
    })
  })
- 
-+describe('generic pass skip boundary', () => {
-+  const localeKey = "type RowProps = PropsLocale<'cordis'> & { toolName: string }"
-+  const all = patterns(false)
 +
-+  it('preserves the cordis locale namespace key in a skipped ui-cordis component', () => {
-+    expect(rewrite(localeKey, 'packages/extensions/ui-cordis/src/client/CordisPreparingRow.tsx', all).text).toBe(localeKey)
++describe('product identifiers', () => {
++  it.each([
++    'apps/cli/tests/optional-bundle-transitions.e2e.ts',
++    'apps/web/tests/agent-preset-selection.e2e.ts',
++    'apps/web/tests/developer-tools-settings.e2e.ts',
++    'docs/subsystems/schedule.md',
++    'docs/subsystems/schedule.zh.md',
++    'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.md',
++    'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.zh.md',
++    'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.md',
++    'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.zh.md',
++    'docs/user/guide/schedule.md',
++    'docs/user/guide/schedule.zh.md',
++    'packages/bundle/web-app/cordis.patch.yml',
++    'packages/client/ui-agent-preset/src/client/CreatePluginMenuItem.tsx',
++    'packages/client/ui-agent-preset/src/client/analytics.ts',
++    'packages/client/ui-agent-preset/tests/analytics.client.spec.ts',
++    'packages/client/ui-agent-preset/tests/components.client.spec.tsx',
++    'packages/client/ui-agent-preset/tests/create-plugin-menu-item.client.spec.tsx',
++    'packages/client/ui-agent-preset/tests/section-store.client.spec.ts',
++    'packages/client/ui-conversation/src/client/input/submission-analytics.ts',
++    'packages/client/ui-conversation/tests/service-orchestration.client.spec.ts',
++    'packages/client/ui-entry-customization/src/client/index.ts',
++    'packages/client/ui-entry-customization/tests/menu.client.spec.tsx',
++    'packages/client/ui-workspace/tests/workspaces-service.client.spec.ts',
++    'packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts',
++    'snapshots/session/cordis-inspect-liveness/client-fixture.mjs',
++    'snapshots/session/cordis-inspect-timeout/client-fixture.mjs',
++  ])('preserves the product values in %s', (file) => {
++    const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
++    expect(text).toMatch(/(['"`])cordis(?:\/inspect-query(?:-resolved)?)?\1/)
++    expect(isRescopeExcluded(file)).toBe(false)
++    expect(rescopeText(text, file)).toEqual({ text, lines: 0 })
++  })
++
++  it('still renames other libraries in a preset consumer and reverses them', () => {
++    const file = 'packages/client/ui-agent-preset/src/client/CreatePluginMenuItem.tsx'
++    const text = "const preset = 'cordis'\nimport utils from 'cosmokit'\nimport Schema from 'schemastery'\n"
++    const scoped = "const preset = 'cordis'\nimport utils from '@deepseek-ai/cosmokit'\nimport Schema from '@deepseek-ai/schemastery'\n"
++    expect(rescopeText(text, file)).toEqual({ text: scoped, lines: 2 })
++    expect(rescopeText(scoped, file)).toEqual({ text: scoped, lines: 0 })
++    expect(rescopeText(scoped, file, true)).toEqual({ text, lines: 2 })
++  })
++
++  it('keeps unlisted package references subject to residue detection', () => {
++    const file = 'packages/example/src/index.ts'
++    const text = "import { Context } from 'cordis'\nimport type Schema from 'schemastery'\n"
++    const scoped = "import { Context } from '@deepseek-ai/cordis'\nimport type Schema from '@deepseek-ai/schemastery'\n"
++    expect(rescopeText(text, file)).toEqual({ text: scoped, lines: 2 })
++    expect(rescopeText(scoped, file)).toEqual({ text: scoped, lines: 0 })
++    expect(rescopeText(scoped, file, true)).toEqual({ text, lines: 2 })
++    expect(rescopeText("ctx.emit('cordis/inspect-query')", file).text).toBe("ctx.emit('@deepseek-ai/cordis/inspect-query')")
 +  })
 +
 +  it.each([
-+    ['packages/client/ui-agent-preset/tests/section-store.client.spec.ts', "it.each([['standard', undefined], ['cordis', undefined]] as const)"],
-+    ['apps/cli/tests/optional-bundle-transitions.e2e.ts', "const native = await agent('cordis')"],
-+    ['packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts', "ctx.on('cordis/inspect-query', (request) => { requests.push(request) })"],
-+    ['snapshots/session/cordis-inspect-liveness/client-fixture.mjs', "ctx.on('cordis/inspect-query-resolved', ({ requestId }) => { resolved.push(requestId) })"],
-+    ['docs/user/guide/schedule.md', 'The `standard`, `cordis`, and `ptc` presets declare the four reminder tools.'],
-+  ])('preserves the cordis preset id and inspector topics in %s', (file, line) => {
-+    expect(rewrite(line, file, all).text).toBe(line)
++    ['import', "import { Context } from 'cordis'", "import { Context } from '@deepseek-ai/cordis'"],
++    ['multiline import', "import {\n  Context,\n} from 'cordis'", "import {\n  Context,\n} from '@deepseek-ai/cordis'"],
++    ['side-effect import', "import 'cordis'", "import '@deepseek-ai/cordis'"],
++    ['export', "export { Context } from 'cordis/subpath'", "export { Context } from '@deepseek-ai/cordis/subpath'"],
++    ['import equals', "import Cordis = require('cordis')", "import Cordis = require('@deepseek-ai/cordis')"],
++    ['dynamic import', 'const cordis = import(`cordis`)', 'const cordis = import(`@deepseek-ai/cordis`)'],
++    ['require', 'const cordis = require("cordis/subpath")', 'const cordis = require("@deepseek-ai/cordis/subpath")'],
++    ['import type', "type Context = import('cordis').Context", "type Context = import('@deepseek-ai/cordis').Context"],
++    ['module declaration', "declare module 'cordis' {}", "declare module '@deepseek-ai/cordis' {}"],
++    ['JSDoc type', "/** @param {import('cordis').Context} ctx */\nfunction apply(ctx) {}", "/** @param {import('@deepseek-ai/cordis').Context} ctx */\nfunction apply(ctx) {}"],
++    ['JSDoc import', "/** @import { Context } from 'cordis' */\nfunction apply(ctx) {}", "/** @import { Context } from '@deepseek-ai/cordis' */\nfunction apply(ctx) {}"],
++    ['same-line imports', "import 'cordis'; import 'cordis/subpath'", "import '@deepseek-ai/cordis'; import '@deepseek-ai/cordis/subpath'"],
++  ])('rewrites %s without changing same-file product data', (_label, source, target) => {
++    const file = 'packages/client/ui-agent-preset/src/client/CreatePluginMenuItem.tsx'
++    const product = "const preset = 'cordis'\nctx.emit('cordis/inspect-query')\nconst fixture = \"import 'cordis'\"\n"
++    const text = `${product}${source}\n`
++    const scoped = `${product}${target}\n`
++    expectRoundTrip(file, text, scoped, 1)
 +  })
 +
-+  it('rewrites the same quoted token where it names the vendored package', () => {
-+    const source = "import type { Context } from 'cordis'"
-+    expect(rewrite(source, 'packages/example/src/index.ts', all).text).toBe("import type { Context } from '@deepseek-ai/cordis'")
++  it.each([
++    ['apps/cli/tests/optional-bundle-transitions.e2e.ts', 1],
++    ['packages/client/ui-conversation/src/client/input/submission-analytics.ts', 1],
++    ['packages/client/ui-conversation/tests/service-orchestration.client.spec.ts', 1],
++    ['packages/client/ui-entry-customization/src/client/index.ts', 1],
++    ['packages/client/ui-entry-customization/tests/menu.client.spec.tsx', 1],
++    ['packages/client/ui-workspace/tests/workspaces-service.client.spec.ts', 1],
++    ['packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts', 2],
++    ['snapshots/session/cordis-inspect-liveness/client-fixture.mjs', 1],
++    ['snapshots/session/cordis-inspect-timeout/client-fixture.mjs', 2],
++  ] as const)('reverses real package references in %s and restores them', (file, lines) => {
++    const scoped = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
++    const text = scoped.replaceAll("'@deepseek-ai/cordis'", "'cordis'")
++    expect(text).not.toBe(scoped)
++    expectRoundTrip(file, text, scoped, lines)
++    expect(rescopeText(text, file, true)).toEqual({ text, lines: 0 })
++  })
++
++  it('rewrites multiline fenced imports while preserving prose and fenced product data', () => {
++    const file = 'docs/subsystems/schedule.md'
++    const text = "The `cordis` preset.\n```ts\nconst preset = 'cordis'\nimport {\n  Context,\n} from 'cordis'\n```\n"
++    const scoped = "The `cordis` preset.\n```ts\nconst preset = 'cordis'\nimport {\n  Context,\n} from '@deepseek-ai/cordis'\n```\n"
++    expectRoundTrip(file, text, scoped, 1)
++  })
++
++  it.each(['cordis', "'cordis'", '"cordis/subpath"'])('rewrites the YAML name %s without changing product comments', (name) => {
++    const text = `# The 'cordis' preset.\n- name: ${name} # 'cordis' stays product data\n`
++    const scoped = `# The 'cordis' preset.\n- name: ${name.replace('cordis', '@deepseek-ai/cordis')} # 'cordis' stays product data\n`
++    for (const [file, wrap] of [
++      ['packages/bundle/web-app/cordis.patch.yml', (value: string) => value],
++      ['docs/subsystems/schedule.md', (value: string) => `The \`cordis\` preset.\n\`\`\`yaml\n${value}\`\`\`\n`],
++    ] as const) {
++      expectRoundTrip(file, wrap(text), wrap(scoped), 1)
++    }
++  })
++
++  it.each(['scripts/rescope-vendor.spec.ts', 'scripts/gen-third-party-notices.spec.ts'])('keeps both package spellings in the fixture owner %s', (file) => {
++    const text = "import 'cordis'\nimport '@deepseek-ai/cordis'\nconst fixture = \"import 'cosmokit'\"\n"
++    expect(rescopeText(text, file)).toEqual({ text, lines: 0 })
++    expect(rescopeText(text, file, true)).toEqual({ text, lines: 0 })
++  })
++
++  it('keeps schema runtime identifiers while rewriting their same-file import', () => {
++    const file = 'vendor/loader/src/config/diff.ts'
++    const text = "const key = Symbol.for('schemastery')\nconst metadata = { vendor: 'schemastery' }\nimport Schema from 'schemastery'\n"
++    const scoped = "const key = Symbol.for('schemastery')\nconst metadata = { vendor: 'schemastery' }\nimport Schema from '@deepseek-ai/schemastery'\n"
++    expectRoundTrip(file, text, scoped, 1)
++  })
++
++  it('rewrites declarations in an older event-name exception', () => {
++    const file = 'packages/extensions/cordis-host-runner/src/index.ts'
++    const text = "ctx.emit('cordis/inspect-query')\nimport { Context } from 'cordis'\ndeclare module 'cordis' {}\n"
++    const scoped = "ctx.emit('cordis/inspect-query')\nimport { Context } from '@deepseek-ai/cordis'\ndeclare module '@deepseek-ai/cordis' {}\n"
++    expectRoundTrip(file, text, scoped, 2)
++  })
++
++  it.each(['```ts\n```\n', "```ts\nimport 'cordis'\n"])('keeps fence line counts without requiring a closing fence', (text) => {
++    const file = 'docs/subsystems/schedule.md'
++    const scoped = text.replace("import 'cordis'", "import '@deepseek-ai/cordis'")
++    expectRoundTrip(file, text, scoped, scoped === text ? 0 : 1)
 +  })
 +})
-+
- describe('exactEditState', () => {
-   it('classifies an insertion by its target form, so a duplicate is invalid', () => {
-     expect(exactEditState(`log\n${ANCHOR}\n`, ANCHOR, INSERTED, 1)).toBe('pending')
 diff --git a/scripts/rescope-vendor.ts b/scripts/rescope-vendor.ts
-index e6292fb2a5..eff088c100 100644
+index e6292fb2a5..3bc3a1f67a 100644
 --- a/scripts/rescope-vendor.ts
 +++ b/scripts/rescope-vendor.ts
-@@ -89,14 +89,21 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
+@@ -12,9 +12,9 @@
+  * `cordis.yml`, the Loader's `cordis:` builtin prefix, `cordis-config-entry`,
+  * `@deepseek-ai/dsh-tool-cordis`, and `cordiverse/cordis`, and makes the
+  * rewrite idempotent because the scoped name's `cordis` is preceded by `/`.
+- * Markdown follows the rename inside every fence, and in `docs/` prose too:
+- * a tutorial that teaches an unresolvable name is wrong, while prose elsewhere
+- * records what was true when it was written.
++ * Markdown follows the token rule in fences and `docs/` prose. Audited product
++ * names stay intact; their source module references and YAML plugin names still
++ * follow the rename. Prose elsewhere records what was true when it was written.
+  *
+  * Sites the token rule cannot express (dot-notation access, unquoted object
+  * keys, regex literals, the vendored-manifest table) are listed in
+@@ -31,6 +31,7 @@ import { execFileSync } from 'node:child_process'
+ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+ import { resolve } from 'node:path'
+ import { fileURLToPath } from 'node:url'
++import ts from 'typescript'
+ 
+ const root = resolve(import.meta.dirname, '..')
+ 
+@@ -66,13 +67,14 @@ interface ExactEdit {
+ }
+ 
+ /**
+- * A file where an upstream name also appears as a vendor DIRECTORY name or an
+- * upstream runtime identifier: the generic pass is disabled for the listed
+- * names and {@link EXACT_EDITS} renames the real package-name occurrences.
++ * A file where an upstream name also identifies runtime metadata, directories,
++ * presets, events or locale keys. Its module references and YAML plugin names
++ * still change; fixture owners retain both package spellings throughout.
+  */
+ interface GenericSkip {
+   readonly file: string
+   readonly upstream: readonly string[]
++  readonly fixture?: true
+ }
+ 
+ const GENERIC_SKIPS: readonly GenericSkip[] = [
+@@ -83,8 +85,10 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
+   // Native schema detection and its fixture share the vendored runtime's Symbol.for identifier.
+   { file: 'packages/boot/app-boot/src/config-schema/native.ts', upstream: ['schemastery'] },
+   { file: 'packages/boot/app-boot/tests/config-schema.spec.ts', upstream: ['schemastery'] },
++  // The codemod's positive and negative fixtures contain both package spellings.
++  { file: 'scripts/rescope-vendor.spec.ts', upstream: RENAMES.map(rename => rename.upstream), fixture: true },
+   // Asserts the vendored-manifest table, which gains an upstream-name column.
+-  { file: 'scripts/gen-third-party-notices.spec.ts', upstream: RENAMES.map(rename => rename.upstream) },
++  { file: 'scripts/gen-third-party-notices.spec.ts', upstream: RENAMES.map(rename => rename.upstream), fixture: true },
+   // `cordis` is also an agent-preset id, so in these files the bare name is
    // product data, not a package reference. Renaming it changed which preset
    // the creator flow stages and which id the roster reports.
-   { file: 'packages/client/ui-agent-preset/src/client/AgentPresetSection.tsx', upstream: ['cordis'] },
-+  { file: 'packages/client/ui-agent-preset/src/client/CreatePluginMenuItem.tsx', upstream: ['cordis'] },
-   { file: 'packages/client/ui-agent-preset/src/client/PresetGuideDialog.tsx', upstream: ['cordis'] },
-   { file: 'packages/client/ui-agent-preset/src/client/index.ts', upstream: ['cordis'] },
-   { file: 'packages/client/ui-agent-preset/tests/apply.client.spec.ts', upstream: ['cordis'] },
-+  { file: 'packages/client/ui-agent-preset/tests/components.client.spec.tsx', upstream: ['cordis'] },
-+  { file: 'packages/client/ui-agent-preset/tests/create-plugin-menu-item.client.spec.tsx', upstream: ['cordis'] },
-   { file: 'packages/client/ui-agent-preset/tests/locales.client.spec.ts', upstream: ['cordis'] },
-   { file: 'packages/client/ui-agent-preset/tests/section.client.spec.tsx', upstream: ['cordis'] },
-+  { file: 'packages/client/ui-agent-preset/tests/section-store.client.spec.ts', upstream: ['cordis'] },
-   { file: 'apps/cli/tests/web-agent-presets.e2e.ts', upstream: ['cordis'] },
-+  { file: 'apps/cli/tests/optional-bundle-transitions.e2e.ts', upstream: ['cordis'] },
+@@ -98,6 +102,33 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
    { file: 'apps/cli/tests/profiles/web/tests/fixtures/creator-plugin-manager.mjs', upstream: ['cordis'] },
    { file: 'apps/web/tests/agent-preset-authoring.e2e.ts', upstream: ['cordis'] },
+   { file: 'packages/preset/agent-preset-registry/tests/session.spec.ts', upstream: ['cordis'] },
++  { file: 'packages/experimental/creation-recommendations/src/index.ts', upstream: ['cordis'] },
++  { file: 'packages/experimental/creation-recommendations/tests/creation.spec.ts', upstream: ['cordis'] },
++  { file: 'packages/experimental/creation-recommendations/tests/loader-composition.spec.ts', upstream: ['cordis'] },
++  // Preset selection, reminder policy and UI copy use the same product id.
++  { file: 'apps/cli/tests/optional-bundle-transitions.e2e.ts', upstream: ['cordis'] },
 +  { file: 'apps/web/tests/agent-preset-selection.e2e.ts', upstream: ['cordis'] },
 +  { file: 'apps/web/tests/developer-tools-settings.e2e.ts', upstream: ['cordis'] },
-   { file: 'packages/preset/agent-preset-registry/tests/session.spec.ts', upstream: ['cordis'] },
-   // The preset-roster loop names the `cordis` preset id, not a package.
-   { file: 'apps/cli/tests/windows-shell.spec.ts', upstream: ['cordis'] },
-@@ -120,6 +127,7 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
-   { file: 'packages/extensions/cordis-host-runner/tests/helpers.ts', upstream: ['cordis'] },
-   { file: 'packages/extensions/cordis-host-runner/tests/runner.spec.ts', upstream: ['cordis'] },
-   { file: 'packages/extensions/cordis-host-runner/tests/versioning.spec.ts', upstream: ['cordis'] },
-+  { file: 'packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts', upstream: ['cordis'] },
-   { file: 'packages/extensions/tool-cordis/src/api-catalog.ts', upstream: ['cordis'] },
-   { file: 'packages/extensions/tool-cordis/src/providers.ts', upstream: ['cordis'] },
-   { file: 'packages/extensions/ui-cordis/src/client/index.ts', upstream: ['cordis'] },
-@@ -130,6 +138,18 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
-   { file: 'packages/experimental/inspector/tests/cordis-tree.host.spec.ts', upstream: ['cordis'] },
-   { file: 'packages/experimental/inspector/tests/plugin.client.spec.ts', upstream: ['cordis'] },
-   { file: 'scripts/gen-cordis-catalog.ts', upstream: ['cordis'] },
-+  // Snapshot session fixtures wire the Inspector event topics directly.
-+  { file: 'snapshots/session/cordis-inspect-liveness/client-fixture.mjs', upstream: ['cordis'] },
-+  { file: 'snapshots/session/cordis-inspect-timeout/client-fixture.mjs', upstream: ['cordis'] },
-+  // Preset rosters in the schedule guides and the web-app overlay name the
-+  // `cordis` preset, not the vendored package.
 +  { file: 'docs/subsystems/schedule.md', upstream: ['cordis'] },
 +  { file: 'docs/subsystems/schedule.zh.md', upstream: ['cordis'] },
 +  { file: 'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.md', upstream: ['cordis'] },
 +  { file: 'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.zh.md', upstream: ['cordis'] },
++  { file: 'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.md', upstream: ['cordis'] },
++  { file: 'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.zh.md', upstream: ['cordis'] },
 +  { file: 'docs/user/guide/schedule.md', upstream: ['cordis'] },
 +  { file: 'docs/user/guide/schedule.zh.md', upstream: ['cordis'] },
 +  { file: 'packages/bundle/web-app/cordis.patch.yml', upstream: ['cordis'] },
-   // The UI locale namespace and input-trigger source id are product keys.
-   { file: 'packages/client/ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.tsx', upstream: ['cordis'] },
-   { file: 'packages/extensions/ui-cordis/src/client/CordisActionRow.tsx', upstream: ['cordis'] },
-@@ -432,6 +452,7 @@ const VENDORED_LIBRARY = /^@deepseek-ai\\/(cosmokit|schemastery)(\\/|$)/
++  { file: 'packages/client/ui-agent-preset/src/client/CreatePluginMenuItem.tsx', upstream: ['cordis'] },
++  { file: 'packages/client/ui-agent-preset/src/client/analytics.ts', upstream: ['cordis'] },
++  { file: 'packages/client/ui-agent-preset/tests/analytics.client.spec.ts', upstream: ['cordis'] },
++  { file: 'packages/client/ui-agent-preset/tests/components.client.spec.tsx', upstream: ['cordis'] },
++  { file: 'packages/client/ui-agent-preset/tests/create-plugin-menu-item.client.spec.tsx', upstream: ['cordis'] },
++  { file: 'packages/client/ui-agent-preset/tests/section-store.client.spec.ts', upstream: ['cordis'] },
++  { file: 'packages/client/ui-conversation/src/client/input/submission-analytics.ts', upstream: ['cordis'] },
++  { file: 'packages/client/ui-conversation/tests/service-orchestration.client.spec.ts', upstream: ['cordis'] },
++  { file: 'packages/client/ui-entry-customization/src/client/index.ts', upstream: ['cordis'] },
++  { file: 'packages/client/ui-entry-customization/tests/menu.client.spec.tsx', upstream: ['cordis'] },
++  { file: 'packages/client/ui-workspace/tests/workspaces-service.client.spec.ts', upstream: ['cordis'] },
+   // The preset-roster loop names the `cordis` preset id, not a package.
+   { file: 'apps/cli/tests/windows-shell.spec.ts', upstream: ['cordis'] },
+   // GROUP_ORDER holds `packages/<group>/` directory names, not package names.
+@@ -124,6 +155,10 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
+   { file: 'packages/extensions/tool-cordis/src/providers.ts', upstream: ['cordis'] },
+   { file: 'packages/extensions/ui-cordis/src/client/index.ts', upstream: ['cordis'] },
+   { file: 'packages/extensions/ui-cordis/src/client/inventory.ts', upstream: ['cordis'] },
++  // Inspector fixtures use the same extension event domain.
++  { file: 'packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts', upstream: ['cordis'] },
++  { file: 'snapshots/session/cordis-inspect-liveness/client-fixture.mjs', upstream: ['cordis'] },
++  { file: 'snapshots/session/cordis-inspect-timeout/client-fixture.mjs', upstream: ['cordis'] },
+   // `cordis/tree` is an Inspector observation topic, not a package subpath.
+   { file: 'packages/experimental/inspector/src/shared/bridge/messages/cordis.ts', upstream: ['cordis'] },
+   { file: 'packages/experimental/inspector/tests/cordis-query.host.spec.ts', upstream: ['cordis'] },
+@@ -261,7 +296,7 @@ const EXACT_EDITS: readonly ExactEdit[] = [
+  * identity to share — the framework itself is a requested module-table row
+  * (external), while these are ordinary libraries a browser bundle inlines.
   */
- export function isRescopeExcluded(file: string): boolean {
-   if (file === 'scripts/rescope-vendor.ts') return true // the mapping itself
-+  if (file === 'scripts/rescope-vendor.spec.ts') return true // the spec quotes both name forms to test the rewrite
-   if (file.startsWith('.agents/notes/')) return true // notes record what was true when written
-   // Recorded model payloads quote documentation verbatim, so they must mirror the
-   // sources on disk — including the notes this rescope leaves alone.
-@@ -459,7 +480,12 @@ interface Pattern {
-   readonly yamlName: RegExp
+-const VENDORED_LIBRARY = /^@deepseek-ai\\/(cosmokit|schemastery)(\\/|$)/
++const VENDORED_LIBRARY = /^@deepseek-ai\\/(?:(?:cosmokit|schemastery)(?:\\/|$)|cordis-plugin-timer$)/
+ 
+ /** Generated descriptor/codec contribution with no shared runtime identity. */`,
+     expect: 1,
+@@ -470,7 +505,7 @@ function patterns(reverse: boolean): Pattern[] {
+     .map(rename => ({
+       ...rename,
+       token: new RegExp(`(['"\`])${escapeRegExp(rename.from)}((?:/[^'"\`\\s]*)?)\\1`, 'g'),
+-      yamlName: new RegExp(`^(\\s*(?:-\\s*)?name:[ \\t]+)${escapeRegExp(rename.from)}([ \\t]*(?:#.*)?)$`, 'gm'),
++      yamlName: new RegExp(`^(\\s*(?:-\\s*)?name:[ \\t]+)(['"]?)${escapeRegExp(rename.from)}((?:/[^\\s'"]*)?)\\2([ \\t]*(?:#.*)?)$`, 'gm'),
+     }))
  }
  
--function patterns(reverse: boolean): Pattern[] {
-+/**
-+ * Compile the rename mapping into ordered, precompiled rewrite patterns.
-+ * @param reverse - Reverse the mapping to restore upstream names.
-+ * @returns One pattern per rename, longest source name first.
-+ */
-+export function patterns(reverse: boolean): Pattern[] {
-   return RENAMES
-     .map(rename => ({
-       upstream: rename.upstream,
-@@ -498,8 +524,12 @@ function rewriteLine(line: string, file: string, all: readonly Pattern[]): strin
-  * prose is a record of what was true when it was written, and the same spelling
-  * can mean something else entirely — the Python SDK's `cordis` option, or the
-  * unvendored `@cordisjs/plugin-http`.
-+ * @param text - Full file content rewritten line by line.
-+ * @param file - Repository-relative path with forward slash separators.
-+ * @param all - Precompiled patterns from `patterns`.
-+ * @returns The rewritten text and the number of changed lines.
+@@ -478,45 +513,109 @@ function skipped(file: string, pattern: Pattern): boolean {
+   return GENERIC_SKIPS.some(skip => skip.file === file && skip.upstream.includes(pattern.upstream))
+ }
+ 
+-function rewriteLine(line: string, file: string, all: readonly Pattern[]): string {
++function rewriteLine(line: string, file: string, all: readonly Pattern[], yaml = false): string {
+   let out = line
+   for (const pattern of all) {
+-    if (skipped(file, pattern)) continue
+-    out = out.replace(pattern.token, (_match, quote: string, subpath: string) => `${quote}${pattern.to}${subpath}${quote}`)
+-    out = out.replace(pattern.yamlName, (_match, prefix: string, suffix: string) => `${prefix}${pattern.to}${suffix}`)
++    const preserve = skipped(file, pattern)
++    if (!preserve) out = out.replace(pattern.token, (_match, quote: string, subpath: string) => `${quote}${pattern.to}${subpath}${quote}`)
++    if (!preserve || yaml) {
++      out = out.replace(pattern.yamlName, (_match, prefix: string, quote: string, subpath: string, suffix: string) => `${prefix}${quote}${pattern.to}${subpath}${quote}${suffix}`)
++    }
++  }
++  return out
++}
++
++/** Rewrite only module literals whose other same-file uses are product data. */
++function rewriteModules(text: string, file: string, all: readonly Pattern[], sourceName = file): string {
++  const skip = GENERIC_SKIPS.find(entry => entry.file === file)
++  if (!skip || skip.fixture) return text
++  const active = all.filter(pattern => skip.upstream.includes(pattern.upstream))
++  const source = ts.createSourceFile(sourceName, text, ts.ScriptTarget.Latest, true)
++  const edits = new Map<number, { end: number; value: string }>()
++  const visited = new Set<ts.Node>()
++  const visit = (node: ts.Node): void => {
++    if (visited.has(node)) return
++    visited.add(node)
++    let literal: ts.Node | undefined
++    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node) || ts.isJSDocImportTag(node)) {
++      literal = node.moduleSpecifier
++    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
++      literal = node.moduleReference.expression
++    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
++      literal = node.argument.literal
++    } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
++      literal = node.arguments[0]
++    } else if (ts.isModuleDeclaration(node)) {
++      literal = node.name
++    }
++    if (literal && ts.isStringLiteralLike(literal)) {
++      const start = literal.getStart(source) + 1
++      const end = literal.getEnd() - 1
++      const value = text.slice(start, end)
++      const pattern = active.find(entry => value === entry.from || value.startsWith(`${entry.from}/`))
++      if (pattern) edits.set(start, { end, value: pattern.to + value.slice(pattern.from.length) })
++    }
++    ts.forEachChild(node, visit)
++    for (const doc of ts.getJSDocCommentsAndTags(node)) visit(doc)
++  }
++  visit(source)
++  let out = text
++  for (const [start, edit] of [...edits].sort(([left], [right]) => right - left)) {
++    out = out.slice(0, start) + edit.value + out.slice(edit.end)
+   }
+   return out
+ }
+ 
+ /**
+- * Rewrite a file's eligible lines.
+- *
+- * Markdown splits in two. Every fence is code a reader copies or a
+- * configuration they mount, so every fence follows the rename regardless of its
+- * info string. Prose follows it only under `docs/`, where a sentence quoting
+- * `` `cordis` `` teaches an unresolved package name; elsewhere
+- * prose is a record of what was true when it was written, and the same spelling
+- * can mean something else entirely — the Python SDK's `cordis` option, or the
+- * unvendored `@cordisjs/plugin-http`.
++ * Rewrite eligible source, fences and docs prose. Audited names in source and
++ * TypeScript/JavaScript fences change only in module syntax; YAML names remain
++ * eligible too. Other names retain the token rule. Prose outside docs is kept.
   */
--function rewrite(text: string, file: string, all: readonly Pattern[]): { text: string; lines: number } {
-+export function rewrite(text: string, file: string, all: readonly Pattern[]): { text: string; lines: number } {
+ function rewrite(text: string, file: string, all: readonly Pattern[]): { text: string; lines: number } {
    const markdown = file.endsWith('.md')
    const prose = markdown && file.startsWith('docs/')
-   let insideFence = false
+-  let insideFence = false
+-  let lines = 0
+-  const out = text.split('\n').map((line) => {
++  const original = text.split('\n')
++  let source = text
++  if (!markdown && /\.(ts|tsx|js|mjs|cjs|tpl)$/.test(file)) source = rewriteModules(text, file, all)
++  let fenceStart: number | undefined
++  let language = ''
++  const out = source.split('\n')
++  const finishFence = (end: number): void => {
++    if (fenceStart === undefined || fenceStart === end || !/^(?:[cm]?[jt]sx?|typescript|javascript)?$/.test(language)) return
++    const extension = language === 'jsx' || language === 'tsx' ? 'tsx' : language === 'js' || language === 'javascript' || language === 'mjs' || language === 'cjs' ? 'js' : 'ts'
++    const body = out.slice(fenceStart, end).join('\n')
++    out.splice(fenceStart, end - fenceStart, ...rewriteModules(body, file, all, `fence.${extension}`).split('\n'))
++  }
++  for (const [index, line] of out.entries()) {
+     if (markdown) {
+-      if (/^\s*```/.test(line)) {
+-        insideFence = !insideFence
+-        return line
++      const fence = /^\s*```(\S*)/.exec(line)
++      if (fence) {
++        if (fenceStart === undefined) {
++          fenceStart = index + 1
++          language = fence[1] ?? ''
++        } else {
++          finishFence(index)
++          fenceStart = undefined
++        }
++        continue
+       }
+-      if (!insideFence && !prose) return line
++      if (fenceStart === undefined && !prose) continue
+     }
+-    const next = rewriteLine(line, file, all)
+-    if (next !== line) lines += 1
+-    return next
+-  })
+-  return { text: out.join('\n'), lines }
++    out[index] = rewriteLine(line, file, all, /\.ya?ml$/.test(file) || (fenceStart !== undefined && (language === 'yaml' || language === 'yml')))
++  }
++  if (fenceStart !== undefined) finishFence(out.length)
++  return { text: out.join('\n'), lines: out.filter((line, index) => line !== original[index]).length }
++}
++
++/**
++ * Apply the CLI's generic package rename with the audited name exceptions.
++ * @param text - Complete source text.
++ * @param file - Repository-relative path with forward slash separators.
++ * @param reverse - Restore upstream package names when true.
++ * @returns Rewritten text and the number of changed lines.
++ */
++export function rescopeText(text: string, file: string, reverse = false): { text: string; lines: number } {
++  return rewrite(text, file, patterns(reverse))
+ }
+ 
+ function classify(file: string): string {

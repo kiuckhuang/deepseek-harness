@@ -1,5 +1,5 @@
 diff --git a/packages/mcp/mcp-client/src/connection.ts b/packages/mcp/mcp-client/src/connection.ts
-index 9a4ec9123a..7d772ce859 100644
+index 9a4ec9123a..85853c01e5 100644
 --- a/packages/mcp/mcp-client/src/connection.ts
 +++ b/packages/mcp/mcp-client/src/connection.ts
 @@ -131,6 +131,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
@@ -47,7 +47,7 @@ index 9a4ec9123a..7d772ce859 100644
        }
        const serverText = generation.getInstructions()?.trimEnd() ?? ''
        instructions = serverText ? `### MCP server: ${config.serverName}\n\n${serverText}` : ''
-@@ -329,17 +336,64 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
+@@ -329,17 +336,75 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
        const quiesced = await closeGeneration()
        attemptSettled = true
        settleFailedGeneration(generation, quiesced)
@@ -76,8 +76,8 @@ index 9a4ec9123a..7d772ce859 100644
 +   * connection stayed open (Streamable HTTP session expiry). The SDK
 +   * surfaces this as a per-request error and never resets its session, so
 +   * without this hook the poisoned generation would fail every call until
-+   * disposal. Tears down that generation, connects a fresh one, and returns
-+   * it for a single retry of the failed call; undefined when no client is
++   * disposal. Closes that generation, connects a fresh one, and returns it
++   * for a single retry of the failed call; undefined when no client is
 +   * available to serve the retry.
 +   *
 +   * @param oldClient - The generation whose session was reported lost.
@@ -98,8 +98,19 @@ index 9a4ec9123a..7d772ce859 100644
 +          clearTimeout(reconnectTimer)
 +          reconnectTimer = undefined
 +        }
++        // The transport stayed open while its session died, so dropping the
++        // handle would leak it; close it before connecting the replacement.
++        const previousClose = closeClient
++        // End the previous outage here, as scheduleReconnect would: a session
++        // lost after the stability window starts a fresh reconnect budget.
++        if (connectedAt !== undefined && Date.now() - connectedAt >= policy.maxDelayMs) failedAttempts = 0
 +        client = undefined
 +        closeClient = undefined
++        connectedAt = undefined
++        if (previousClose !== undefined && !await previousClose()) {
++          ctx.logger.error(`${label}: the lost-session generation could not confirm transport closure — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`)
++          return undefined
++        }
 +        const generation = await connectGeneration(false)
 +        if (!isCurrent(generation)) {
 +          // Disposed mid-recovery: the success path bailed without closing.
@@ -115,7 +126,7 @@ index 9a4ec9123a..7d772ce859 100644
    }
  
    /** The in-flight (or last settled) connection attempt; dispose awaits it for quiescence. */
-@@ -399,8 +453,11 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
+@@ -399,8 +464,11 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
          ctx.logger.error(incompleteDisposalMessage)
        }
        // Quiesce, don't just request it: the in-flight attempt enqueues its
@@ -201,3 +212,52 @@ index 9e7b5c0ab5..a14cd572cb 100644
      }))
    }
  
+diff --git a/packages/mcp/mcp-client/tests/session-loss.spec.ts b/packages/mcp/mcp-client/tests/session-loss.spec.ts
+new file mode 100644
+index 0000000000..ffc8f9fa1f
+--- /dev/null
++++ b/packages/mcp/mcp-client/tests/session-loss.spec.ts
+@@ -0,0 +1,43 @@
++/** Session-loss classification across both MCP SDK error generations. */
++import { describe, expect, it } from 'vitest'
++import { isSessionLostError } from '../src/tools.ts'
++
++describe('isSessionLostError', () => {
++  it('classifies a client 2.x SdkHttpError session loss (status field)', () => {
++    expect(isSessionLostError({
++      name: 'SdkHttpError',
++      code: 'CLIENT_HTTP_NOT_IMPLEMENTED',
++      status: 404,
++      message: 'Error POSTing to endpoint: {"error": "Session not found or expired"}',
++    })).toBe(true)
++  })
++
++  it('classifies a legacy sdk StreamableHTTPError session loss (numeric code)', () => {
++    expect(isSessionLostError({
++      name: 'StreamableHTTPError',
++      code: 404,
++      message: 'Streamable HTTP error: Error POSTing to endpoint: {"error": "Session not found"}',
++    })).toBe(true)
++  })
++
++  it('accepts 410 in either field', () => {
++    expect(isSessionLostError({ code: 410, message: 'session terminated' })).toBe(true)
++    expect(isSessionLostError({ status: 410, message: 'session terminated' })).toBe(true)
++  })
++
++  it('rejects a 404 whose message names no session loss', () => {
++    expect(isSessionLostError({
++      name: 'SdkHttpError',
++      code: 'CLIENT_HTTP_NOT_IMPLEMENTED',
++      status: 404,
++      message: 'Error POSTing to endpoint: Cannot POST /wrong-path',
++    })).toBe(false)
++  })
++
++  it('rejects other HTTP statuses and connection failures', () => {
++    expect(isSessionLostError({ status: 500, message: 'Error POSTing to endpoint: boom' })).toBe(false)
++    expect(isSessionLostError({ code: 'ECONNREFUSED', message: 'connect ECONNREFUSED 127.0.0.1:9185' })).toBe(false)
++    expect(isSessionLostError(null)).toBe(false)
++    expect(isSessionLostError('session not found')).toBe(false)
++  })
++})

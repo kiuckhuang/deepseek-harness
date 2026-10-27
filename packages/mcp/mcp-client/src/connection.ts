@@ -358,8 +358,8 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
    * connection stayed open (Streamable HTTP session expiry). The SDK
    * surfaces this as a per-request error and never resets its session, so
    * without this hook the poisoned generation would fail every call until
-   * disposal. Tears down that generation, connects a fresh one, and returns
-   * it for a single retry of the failed call; undefined when no client is
+   * disposal. Closes that generation, connects a fresh one, and returns it
+   * for a single retry of the failed call; undefined when no client is
    * available to serve the retry.
    *
    * @param oldClient - The generation whose session was reported lost.
@@ -380,8 +380,19 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
           clearTimeout(reconnectTimer)
           reconnectTimer = undefined
         }
+        // The transport stayed open while its session died, so dropping the
+        // handle would leak it; close it before connecting the replacement.
+        const previousClose = closeClient
+        // End the previous outage here, as scheduleReconnect would: a session
+        // lost after the stability window starts a fresh reconnect budget.
+        if (connectedAt !== undefined && Date.now() - connectedAt >= policy.maxDelayMs) failedAttempts = 0
         client = undefined
         closeClient = undefined
+        connectedAt = undefined
+        if (previousClose !== undefined && !await previousClose()) {
+          ctx.logger.error(`${label}: the lost-session generation could not confirm transport closure — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`)
+          return undefined
+        }
         const generation = await connectGeneration(false)
         if (!isCurrent(generation)) {
           // Disposed mid-recovery: the success path bailed without closing.

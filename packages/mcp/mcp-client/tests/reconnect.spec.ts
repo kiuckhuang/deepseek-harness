@@ -213,6 +213,40 @@ describe('reconnect supervisor', () => {
     expect(instances).toHaveLength(2)
   })
 
+  it('re-initializes a generation whose server-side session was lost and closes it first', async () => {
+    const { warns } = captureLogs(ctx)
+    await apply(ctx, stdioConfig({ initialDelayMs: 5, maxDelayMs: 40, maxAttempts: 5 }))
+    await vi.waitFor(() => { expect(ctx.tools.get('mcp__srv__remote')).toBeDefined() })
+    expect(instances).toHaveLength(1)
+
+    // Streamable HTTP: the connection stays open while the server forgets the
+    // session, so the SDK reports it per request and never resets itself.
+    mockCallTool.mockRejectedValueOnce({
+      status: 404,
+      message: 'Error POSTing to endpoint: Session not found or expired',
+    })
+
+    const result = await executeToolFixture(ctx, {
+      signal: testToolSignal,
+      callId: nextCallId(), name: 'mcp__srv__remote', arguments: {},
+    })
+
+    // The failed call is retried once against the replacement generation.
+    expect(result.isError).toBe(false)
+    expect(instances).toHaveLength(2)
+    expect(mockCallTool).toHaveBeenCalledTimes(2)
+    expect(mockCallTool.mock.instances[1]).toBe(instances[1])
+    // The lost transport closed before the replacement connected; dropping the
+    // handle instead would leak it for the life of the process.
+    const [closeOrder] = mockClose.mock.invocationCallOrder
+    const reconnectOrder = mockConnect.mock.invocationCallOrder[1]
+    if (closeOrder === undefined || reconnectOrder === undefined) {
+      throw new Error('expected the lost generation to close before the replacement connects')
+    }
+    expect(closeOrder).toBeLessThan(reconnectOrder)
+    expect(warns.some(line => line.includes('server-side session lost; re-initializing transport'))).toBe(true)
+  })
+
   it('stops at the failure cap, unregisters the tools, and reports final failure', async () => {
     const { warns, errors } = captureLogs(ctx)
     await apply(ctx, stdioConfig({ initialDelayMs: 2, maxDelayMs: 8, maxAttempts: 2 }))

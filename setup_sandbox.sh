@@ -2,10 +2,11 @@
 set -Eeuo pipefail
 
 # Give this machine a usable sandbox runner so the harness can enforce the
-# confined modes instead of failing closed with SANDBOX_UNAVAILABLE. Linux needs
-# bubblewrap; macOS and Windows already ship a runner, so the probes still run
-# but nothing is installed. The harness needs a restart afterwards because the
-# runner verdict is cached for the life of the server process.
+# confined modes instead of failing closed with SANDBOX_UNAVAILABLE. Linux accepts
+# bubblewrap or a Landlock-enforcing kernel; macOS and Windows already ship a
+# runner, so the probes still run but nothing is installed. The harness needs a
+# restart afterwards because the runner verdict is cached for the life of the
+# server process.
 
 REPO_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
@@ -23,8 +24,12 @@ die() {
 }
 
 SUDO=
-if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
-    SUDO=sudo
+if [ "$(id -u)" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then
+        SUDO=sudo
+    else
+        SUDO=missing
+    fi
 fi
 
 # One runner argv per platform, matching packages/sandbox/sandbox-local so the
@@ -37,10 +42,36 @@ probe_runner() {
     esac
 }
 
+# Linux accepts bubblewrap or a Landlock-enforcing kernel, so a host without
+# bubblewrap is still confined when Landlock is active. Kernels that publish
+# /sys/kernel/security/lsm list it there; older ones fall back to the version
+# Landlock first shipped in.
+landlock_enabled() {
+    if [ -r /sys/kernel/security/lsm ]; then
+        if grep -q 'landlock' /sys/kernel/security/lsm; then
+            return 0
+        fi
+        return 1
+    fi
+    local major minor
+    IFS=. read -r major minor _ <<<"$(uname -r)"
+    [ "${major:-0}" -gt 5 ] \
+        || { [ "${major:-0}" -eq 5 ] && [ "${minor:-0}" -ge 13 ]; }
+}
+
 install_bwrap() {
     if command -v bwrap >/dev/null 2>&1; then
         info "bubblewrap already present: $(bwrap --version)"
         return 0
+    fi
+
+    if landlock_enabled; then
+        info 'bubblewrap is missing, but the kernel enforces Landlock; the harness can confine without it'
+        return 0
+    fi
+
+    if [ "$SUDO" = missing ]; then
+        die 'bubblewrap is missing and neither root nor sudo is available; install bubblewrap and re-run'
     fi
 
     info 'bubblewrap is missing; installing it'
@@ -63,8 +94,9 @@ install_bwrap() {
         || die 'bubblewrap is still not on PATH after the install'
 }
 
-# Prove the profile both launches and actually confines: a write outside the
-# workspace must be refused. A launcher that merely starts is not evidence.
+# Prove the runner the harness will use: on Linux a write outside the workspace
+# must be refused, not merely launched; on macOS the binary must launch a
+# profile. A launcher that merely exists is not evidence.
 verify_runner() {
     local runner
     runner=$(probe_runner)
@@ -74,9 +106,13 @@ verify_runner() {
         return 0
     fi
 
-    command -v "$runner" >/dev/null 2>&1 \
-        || die "$runner is not on PATH; the harness will keep reporting SANDBOX_UNAVAILABLE"
-
+    if ! command -v "$runner" >/dev/null 2>&1; then
+        if [ "$runner" = bwrap ] && landlock_enabled; then
+            info 'bubblewrap is not on PATH; the kernel enforces Landlock, so the harness still confines'
+            return 0
+        fi
+        die "$runner is not on PATH; the harness will keep reporting SANDBOX_UNAVAILABLE"
+    fi
     if [ "$runner" = bwrap ]; then
         local -a base=(--ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent)
         local workspace=$REPO_DIR
@@ -97,6 +133,10 @@ verify_runner() {
             die 'bwrap launched but did not confine: a write outside the workspace succeeded'
         fi
         info 'enforcement: a write outside the workspace is refused'
+    elif [ "$runner" = sandbox-exec ]; then
+        sandbox-exec -p '(version 1)(allow default)' true >/dev/null 2>&1 \
+            || die 'sandbox-exec is present but cannot launch a profile on this host'
+        info 'sandbox-exec launches a trivial profile: OK'
     else
         info "$runner present; the harness will probe it at the first confined call"
     fi

@@ -16,7 +16,9 @@ export DSH_TELEMETRY_DISABLED ?= 1
 # composed tree. The guard fails `make` when a matching row is not disabled,
 # so a harness update that adds or renames an egress row fails loudly instead
 # of shipping silently. `plugin-inventory` (local RPC) and `session-log-*`
-# (local export) deliberately do not match.
+# (local export) deliberately do not match. Row keys are anchored to the dump's
+# column-0 `- id:`/`- name:` entries, so a nested `id` inside a plugin's config
+# cannot reset the tracker and hide the row that owns it.
 TELEMETRY_ROW_PATTERN := telemetry|analytics|dsh-otel|package-inventory-deepseek|session-log-deepseek|^otel$$
 
 telemetry-guard:
@@ -26,11 +28,13 @@ telemetry-guard:
 	  rm -f $$dump; exit 1; \
 	fi; \
 	bad=$$(awk -v pat='$(TELEMETRY_ROW_PATTERN)' ' \
-	  /^[[:space:]]*- id: / { if (id != "" && !dis && (id ~ pat || nm ~ pat)) print id; id = $$3; nm = ""; dis = 0; next } \
-	  /^[[:space:]]+name: / { nm = $$2; next } \
-	  /^[[:space:]]+disabled: true[[:space:]]*$$/ { dis = 1; next } \
-	  /^[[:space:]]+disabled:/ { dis = 0; next } \
-	  END { if (id != "" && !dis && (id ~ pat || nm ~ pat)) print id }' $$dump); \
+	  function flush() { if ((id != "" || nm != "") && !dis && (id ~ pat || nm ~ pat)) print (id != "" ? id : nm) } \
+	  /^- id: / { flush(); id = $$3; nm = ""; dis = 0; next } \
+	  /^- name: / { flush(); id = ""; nm = $$3; dis = 0; next } \
+	  /^  name: / { nm = $$2; next } \
+	  /^  disabled: true[[:space:]]*$$/ { dis = 1; next } \
+	  /^  disabled:/ { dis = 0; next } \
+	  END { flush() }' $$dump); \
 	rm -f $$dump; \
 	if [ -n "$$bad" ]; then \
 	  echo "ERROR: the composed profile mounts enabled telemetry/egress rows:"; \

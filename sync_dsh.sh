@@ -45,7 +45,8 @@ re-runs. A regenerated layer that no longer differs from upstream is left
 empty, which mk_dsh.sh skips.
 
 Options:
-  --check           Verify the merge and the regenerated layers, change nothing
+  --check           Verify the merge and the regenerated layers without
+                    changing the working tree
   --patch FILE      Regenerate only this layer, repeatable; replaces discovery
   -h, --help        Show this help
 
@@ -219,6 +220,7 @@ LAYER_BASE=${BASE_REF:-$MERGE_COMMIT}
 # HEAD after the merge; in check mode it is the tree a real merge would produce,
 # so nothing is mutated while still deriving from the merged result.
 DERIVE_REF=HEAD
+MERGE_CONFLICT=0
 if [[ "$MODE" = check ]]; then
     info "merge check: $BRANCH <- $MERGE_REF ($MERGE_COMMIT)"
     merge_probe=$(mktemp)
@@ -227,6 +229,7 @@ if [[ "$MODE" = check ]]; then
         DERIVE_REF=$(head -n 1 "$merge_probe")
         info "merge would succeed without conflicts"
     else
+        MERGE_CONFLICT=1
         info "WARNING: merge would conflict; layers are derived from $BRANCH instead"
     fi
 else
@@ -250,24 +253,47 @@ layer_paths() {
 # Regenerate one layer as the branch's difference from LAYER_BASE for the paths
 # that layer already covers. An empty result retires the layer.
 regenerate_layer() {
-    local layer=$1 out=$2 base=${3:-$LAYER_BASE}
+    local layer=$1 out=$2
     local -a paths=()
     mapfile -t paths < <(layer_paths "$layer")
     if ((${#paths[@]} == 0)); then
         : >"$out"
         return 0
     fi
-    git diff --no-color --no-ext-diff "$base" "$DERIVE_REF" -- "${paths[@]}" >"$out"
+    git diff --no-color --no-ext-diff "$LAYER_BASE" "$DERIVE_REF" -- "${paths[@]}" >"$out"
+}
+
+# Rebuild a layer whose merge-derived diff misses the release context: keep every
+# path the release still matches and derive only the failing paths from the
+# release. Re-deriving the whole layer would drag unrelated upstream work into
+# paths whose release context is intact.
+rederive_layer_paths() {
+    local layer=$1 out=$2
+    local -a paths=()
+    local path part="${out}.part"
+    mapfile -t paths < <(layer_paths "$layer")
+    TMP_FILES+=("$part")
+    : >"$out"
+    for path in "${paths[@]}"; do
+        git diff --no-color --no-ext-diff "$LAYER_BASE" "$DERIVE_REF" -- "$path" >"$part"
+        if git -C "$WORKTREE" apply --check "$part" 2>/dev/null; then
+            cat "$part" >>"$out"
+        else
+            info "WARNING: ${layer##*/} misses $RELEASE_REF context at $path; deriving that path from the release"
+            git diff --no-color --no-ext-diff "$RELEASE_COMMIT" "$DERIVE_REF" -- "$path" >>"$out"
+        fi
+    done
+    rm -f "$part"
 }
 
 # Prove every regenerated layer still applies to a pristine release checkout.
 # A layer is the branch's difference from the upstream line it merged, so a path
 # upstream rewrote between the release and its default branch can leave the
-# layer without the release's own context. That layer is re-derived against the
-# release and re-checked; the warning marks a release build that mixes newer
-# upstream work into the layer.
+# layer without the release's own context. Only those paths are re-derived
+# against the release and re-checked; the warning marks a release build that
+# mixes newer upstream work into the layer.
 verify_layers() {
-    local index layer
+    local index layer drift=0
     info "verifying regenerated layers against $RELEASE_REF"
     WORKTREE=$(mktemp -d "${TMPDIR:-/tmp}/dsh-sync-verify.XXXXXX")
     rmdir "$WORKTREE"
@@ -280,19 +306,22 @@ verify_layers() {
             continue
         fi
         if ! git -C "$WORKTREE" apply --check "$layer" 2>/dev/null; then
-            info "WARNING: ${PATCH_LAYERS[index]##*/} misses $RELEASE_REF context; re-deriving it against the release"
-            regenerate_layer "${PATCH_LAYERS[index]}" "$layer" "$RELEASE_COMMIT"
-            [[ -s "$layer" ]] || {
+            info "WARNING: ${PATCH_LAYERS[index]##*/} does not apply to $RELEASE_REF; re-deriving its failing paths"
+            rederive_layer_paths "${PATCH_LAYERS[index]}" "$layer"
+            if [[ ! -s "$layer" ]]; then
                 printf '[skip]  %s: empty after re-deriving against %s\n' "$layer" "$RELEASE_REF"
                 continue
-            }
+            fi
             git -C "$WORKTREE" apply --check "$layer" \
                 || die "regenerated layer does not apply to $RELEASE_REF: $layer"
-            info "WARNING: ${PATCH_LAYERS[index]##*/} carries upstream work newer than $RELEASE_REF; run mk_dsh.sh before shipping a release build"
+            drift=1
         fi
         git -C "$WORKTREE" apply "$layer"
         printf '[apply] %s\n' "$layer"
     done
+    if ((drift)); then
+        info "WARNING: a layer carries upstream work newer than $RELEASE_REF; run mk_dsh.sh before shipping a release build"
+    fi
     git worktree remove --force "$WORKTREE"
     WORKTREE_CREATED=0
 }
@@ -307,10 +336,13 @@ for layer in "${PATCH_LAYERS[@]}"; do
     index=$((index + 1))
 done
 
-verify_layers "${STAGED_LAYERS[@]}"
+verify_layers
 
 if [[ "$MODE" = check ]]; then
-    info "check complete; nothing changed"
+    if ((MERGE_CONFLICT)); then
+        die "merge of $MERGE_REF ($MERGE_COMMIT) conflicts; resolve it with 'git merge $MERGE_COMMIT', then re-run"
+    fi
+    info "check complete; nothing changed in the working tree"
     exit 0
 fi
 

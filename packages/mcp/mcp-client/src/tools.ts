@@ -23,13 +23,20 @@ import type { ToolDefinition, ToolExecution, ToolExecutionResult } from '@deepse
 import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { describeError, McpLocalError } from './diagnostic.ts'
 
 /** Resolved options relevant to tool bridging. */
 export interface ToolBridgeOptions {
-  /** Whether a registry conflict is contained or rejects this synchronization. */
-  registrationFailure: 'contain' | 'throw'
   serverName: string
   toolCallTimeoutMs: number
+  /** Generation cancellation combined with each tool execution's signal. */
+  signal: AbortSignal
+  /**
+   * Remove secret values from tool-call failures before they reach callers.
+   * @param text - transport or protocol failure text, or MCP `isError` result text.
+   * @returns the text with secret values replaced.
+   */
+  redact?: (text: string) => string
   /**
    * Optional recovery hook for transports whose server-side session can be
    * lost while the connection stays nominally open (Streamable HTTP session
@@ -62,6 +69,9 @@ export function isSessionLostError(error: unknown): boolean {
   const message = typeof rawMessage === 'string' ? rawMessage : ''
   return /session|not found|expired|terminated/i.test(message)
 }
+
+/** Registration failed after the prior generation was removed and partial registrations were rolled back. */
+export class McpToolRegistrationError extends McpLocalError {}
 
 /** State for one sync generation: the current set of disposers keyed by public name. */
 export type ToolDisposers = Map<string, () => void>
@@ -129,15 +139,18 @@ export function publicToolName(serverName: string, rawName: string): string {
  * 2. Swap: dispose the previous generation, register the new one. A registry
  *    conflict here can only mean a foreign registration squats on this
  *    server's `mcp__<serverName>__` namespace — the partial generation is
- *    rolled back (zero tools from this server) and logged. Initial strict
- *    synchronization may propagate the conflict so its parent transaction
- *    rejects; ordinary clients and later re-syncs return an empty map.
+ *    rolled back (zero tools from this server), logged, and rejected so the
+ *    supervisor closes the failed connection generation.
  *
  * @param client - Connected MCP Client instance used to list and call tools.
  * @param ctx - Cordis context providing the `tools` service for registration.
- * @param opts - Bridge options: server namespace and per-call timeout.
+ * @param opts - server namespace, call timeout, generation signal, and optional error formatter.
  * @param previous - Disposer map from the prior sync generation; disposed
  *   during the swap phase (only after the fetch phase succeeded).
+ * @param eligible - Judged again at the commit point, after the listing
+ *   settled: a sync whose generation was abandoned meanwhile (startup budget
+ *   elapsed, connection closed) publishes nothing and leaves `previous`
+ *   untouched.
  * @returns A map of registered public tool names to their unregister
  *   disposers — the exact set of live registrations owned by this server.
  */
@@ -146,12 +159,13 @@ export async function syncTools(
   ctx: Context,
   opts: ToolBridgeOptions,
   previous: ToolDisposers,
+  eligible: () => boolean = () => true,
 ): Promise<ToolDisposers> {
   // Phase 1: fetch and build the next generation without touching the registry.
   const definitions = new Map<string, ToolDefinition>()
   const response = client.getServerCapabilities()?.tools === undefined
     ? { tools: [] }
-    : await client.listTools(undefined, { cacheMode: 'refresh' })
+    : await client.listTools(undefined, { cacheMode: 'refresh', signal: opts.signal })
   for (const tool of response.tools) {
     const publicName = publicToolName(opts.serverName, tool.name)
     if (definitions.has(publicName)) {
@@ -168,28 +182,41 @@ export async function syncTools(
       taskRequired: tool.execution?.taskSupport === 'required',
       call: async (args, execution) => {
         try {
-          return await client.callTool(
+          // Each call is bounded by the execution's cancellation plus the owning
+          // generation's lifetime.
+          const invoke = (target: Client, signal: AbortSignal) => target.callTool(
             { name: tool.name, arguments: args },
-            { signal: execution.signal, timeout: opts.toolCallTimeoutMs, toolDefinition: tool },
+            { signal, timeout: opts.toolCallTimeoutMs, toolDefinition: tool },
           )
+          let result: Awaited<ReturnType<typeof invoke>>
+          try {
+            result = await invoke(client, AbortSignal.any([execution.signal, opts.signal]))
+          } catch (error) {
+            if (!isSessionLostError(error) || opts.reacquireClient === undefined) throw error
+            // The transport's server-side session is gone and the SDK never resets
+            // it; ask the supervisor for a fresh generation and retry exactly once.
+            ctx.logger.warn(`mcp-client(${opts.serverName}): server-side session lost during "${tool.name}"; re-initializing and retrying`)
+            const replacement = await opts.reacquireClient(client)
+            if (replacement === undefined || replacement === client) throw error
+            if (execution.signal.aborted) throw error
+            // The replacement generation owns a fresh lifetime; the failed
+            // generation's cancellation signal is already aborted.
+            result = await invoke(replacement, execution.signal)
+          }
+          if (result.isError !== true || opts.redact === undefined) return result
+          return { isError: true, content: [{ type: 'text', text: opts.redact(extractText(result.content as JsonValue[], tool.name)) }] }
         } catch (error) {
-          if (!isSessionLostError(error) || opts.reacquireClient === undefined) throw error
-          // The transport's server-side session is gone and the SDK never resets
-          // it; ask the supervisor for a fresh generation and retry exactly once.
-          ctx.logger.warn(`mcp-client(${opts.serverName}): server-side session lost during "${tool.name}"; re-initializing and retrying`)
-          const replacement = await opts.reacquireClient(client)
-          if (replacement === undefined || replacement === client) throw error
-          if (execution.signal.aborted) throw error
-          return await replacement.callTool(
-            { name: tool.name, arguments: args },
-            { signal: execution.signal, timeout: opts.toolCallTimeoutMs, toolDefinition: tool },
-          )
+          if (opts.redact === undefined) throw error
+          throw new Error(opts.redact(describeError(error)))
         }
       },
     }))
   }
 
-  // Phase 2: swap generations.
+  // Phase 2: swap generations — but only for a generation still entitled to
+  // publish. The listing above is the slow await an abandonment can overtake;
+  // state is published at its commit point or not at all.
+  if (!eligible()) return previous
   for (const dispose of previous.values()) dispose()
   const disposers: ToolDisposers = new Map()
   try {
@@ -202,8 +229,7 @@ export async function syncTools(
     // sees either the full generation or none of it — never a partial set.
     for (const dispose of disposers.values()) dispose()
     ctx.logger.error(`mcp-client(${opts.serverName}): tool registration failed, no tools registered: ${String(error)}`)
-    if (opts.registrationFailure === 'throw') throw error
-    return new Map()
+    throw new McpToolRegistrationError('MCP tool registration failed', { cause: error })
   }
   return disposers
 }

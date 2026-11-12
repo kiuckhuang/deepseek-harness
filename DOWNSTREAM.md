@@ -10,7 +10,6 @@ A layer covers the files it already names, and every layer is verified against t
 
 | Layer | Downstream change |
 |---|---|
-| `dsh_build.patch` | Raises the `git ls-files` buffer in `scripts/rescope-vendor.ts` for this repository's tracked-file count |
 | `dsh_copilot.patch` | Real-composition test for the GitHub Copilot GPT-6.1 Sol route |
 | `dsh_mcp.patch` | Re-initializes a Streamable HTTP MCP session that the server dropped while the connection stayed open |
 | `dsh_sandbox.patch` | Model-visible sandbox-unavailable text that names host capability instead of cueing an escalation |

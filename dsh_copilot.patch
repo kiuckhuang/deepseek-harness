@@ -1,8 +1,8 @@
 diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-index 324574bfb9..d3014e9c30 100644
+index 547142126b..3ebc17b68c 100644
 --- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-@@ -141,6 +141,40 @@ describe('llm-pi-ai real dormant composition', () => {
+@@ -142,6 +142,40 @@ describe('llm-pi-ai real dormant composition', () => {
      expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
    })
  

@@ -1,5 +1,5 @@
 diff --git a/packages/sandbox/sandbox/README.md b/packages/sandbox/sandbox/README.md
-index 7014cc4730..130a13d954 100644
+index 3db483c834..b4b4448441 100644
 --- a/packages/sandbox/sandbox/README.md
 +++ b/packages/sandbox/sandbox/README.md
 @@ -131,7 +131,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
@@ -12,7 +12,7 @@ index 7014cc4730..130a13d954 100644
  
  #### Token effect
 diff --git a/packages/sandbox/sandbox/README.zh.md b/packages/sandbox/sandbox/README.zh.md
-index bc94b7f090..25d0a2b12c 100644
+index 6e9710cde9..33c58795fe 100644
 --- a/packages/sandbox/sandbox/README.zh.md
 +++ b/packages/sandbox/sandbox/README.zh.md
 @@ -131,7 +131,7 @@ kind: "package-reference"
@@ -25,10 +25,10 @@ index bc94b7f090..25d0a2b12c 100644
  
  #### Token 影响
 diff --git a/packages/sandbox/sandbox/src/index.ts b/packages/sandbox/sandbox/src/index.ts
-index 0fa3183987..128f1cfe74 100644
+index 69d9100f66..9ea2ab8af0 100644
 --- a/packages/sandbox/sandbox/src/index.ts
 +++ b/packages/sandbox/sandbox/src/index.ts
-@@ -135,15 +135,23 @@ export const SANDBOX_UNAVAILABLE = 'SANDBOX_UNAVAILABLE'
+@@ -144,15 +144,23 @@ export const SANDBOX_UNAVAILABLE = 'SANDBOX_UNAVAILABLE'
   * Thrown when {@link SandboxProvider.confine} cannot enforce the requested
   * mode. Carries {@link SANDBOX_UNAVAILABLE} through the structured error
   * channel.
@@ -57,10 +57,10 @@ index 0fa3183987..128f1cfe74 100644
        SANDBOX_UNAVAILABLE,
      )
 diff --git a/packages/sandbox/sandbox/tests/vocabulary.spec.ts b/packages/sandbox/sandbox/tests/vocabulary.spec.ts
-index 000168e726..bd5909c7bb 100644
+index 8c3002a4ea..bdd0cb600f 100644
 --- a/packages/sandbox/sandbox/tests/vocabulary.spec.ts
 +++ b/packages/sandbox/sandbox/tests/vocabulary.spec.ts
-@@ -27,11 +27,15 @@ describe('SandboxUnavailableError', () => {
+@@ -18,11 +18,15 @@ describe('SandboxUnavailableError', () => {
      expect(error).toBeInstanceOf(Error)
    })
  
@@ -101,7 +101,7 @@ index 9e87208824..947893d687 100644
  {"type":"step/start","data":{"turn":1,"step":3}}
  {"type":"assistant/message","data":{"turn":1,"step":3,"message":{"role":"assistant","content":[{"type":"text","text":"ASYNC_CONFINEMENT_FAILED"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-flash"},"id":"{{message:9}}"},"usage":{"inputTokens":10,"outputTokens":2},"stream":[{"type":"chunk","time":1789151669391,"chunk":{"type":"block-start","index":0,"blockType":"text"}},{"type":"text-chunks","time0":1789151669391,"index":0,"dt":[],"texts":["ASYNC_CONFINEMENT_FAILED"]},{"type":"chunk","time":1789151669391,"chunk":{"type":"block-end","index":0,"block":{"type":"text","text":"ASYNC_CONFINEMENT_FAILED"}}},{"type":"chunk","time":1789151669391,"chunk":{"type":"usage","usage":{"inputTokens":10,"outputTokens":2}}},{"type":"chunk","time":1789151669391,"chunk":{"type":"finish","reason":{"kind":"stop"}}}]},"surfaceOp":"append"}
 diff --git a/snapshots/session/background-confinement-failure/session.v4.jsonl b/snapshots/session/background-confinement-failure/session.v4.jsonl
-index 95d268ecf8..b393df6360 100644
+index 20bda0348f..77f9532a13 100644
 --- a/snapshots/session/background-confinement-failure/session.v4.jsonl
 +++ b/snapshots/session/background-confinement-failure/session.v4.jsonl
 @@ -15,16 +15,16 @@
@@ -152,7 +152,7 @@ index 559d903b6f..61536814d4 100644
  {"type":"step/start","data":{"turn":1,"step":2}}
  {"type":"assistant/message","data":{"turn":1,"step":2,"message":{"role":"assistant","content":[{"type":"tool-call","id":"missing-runner-output","name":"job_output","arguments":"{\"job_id\":\"bash-1\",\"wait\":true}"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-flash"},"id":"{{message:6}}"},"usage":{"inputTokens":1,"outputTokens":1},"stream":[{"type":"chunk","time":1788699393128,"chunk":{"type":"block-start","index":0,"blockType":"tool-call"}},{"type":"tool-call-chunks","time0":1788699393128,"index":0,"dt":[],"id":"missing-runner-output","name":"job_output","args":["{\"job_id\":\"bash-1\",\"wait\":true}"]},{"type":"chunk","time":1788699393128,"chunk":{"type":"block-end","index":0,"block":{"type":"tool-call","id":"missing-runner-output","name":"job_output","arguments":"{\"job_id\":\"bash-1\",\"wait\":true}"}}},{"type":"chunk","time":1788699393128,"chunk":{"type":"usage","usage":{"inputTokens":1,"outputTokens":1}}},{"type":"chunk","time":1788699393128,"chunk":{"type":"finish","reason":{"kind":"tool-calls"}}}]},"surfaceOp":"append"}
 diff --git a/snapshots/session/missing-sandbox-runner/session.v4.jsonl b/snapshots/session/missing-sandbox-runner/session.v4.jsonl
-index 98baa293db..0ed5a92331 100644
+index 7922555084..43a91f6a1e 100644
 --- a/snapshots/session/missing-sandbox-runner/session.v4.jsonl
 +++ b/snapshots/session/missing-sandbox-runner/session.v4.jsonl
 @@ -16,7 +16,7 @@

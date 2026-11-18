@@ -1,5 +1,5 @@
 diff --git a/packages/sandbox/sandbox/README.md b/packages/sandbox/sandbox/README.md
-index 3db483c834..b4b4448441 100644
+index c2d5eacd3f..2b0177b9a8 100644
 --- a/packages/sandbox/sandbox/README.md
 +++ b/packages/sandbox/sandbox/README.md
 @@ -131,7 +131,7 @@ Through [`dsh-bash-sandbox`](../../shell/bash-sandbox/README.md) and [`dsh-tool-
@@ -12,7 +12,7 @@ index 3db483c834..b4b4448441 100644
  
  #### Token effect
 diff --git a/packages/sandbox/sandbox/README.zh.md b/packages/sandbox/sandbox/README.zh.md
-index 6e9710cde9..33c58795fe 100644
+index 7c2df4bdb6..1e3db73d9f 100644
 --- a/packages/sandbox/sandbox/README.zh.md
 +++ b/packages/sandbox/sandbox/README.zh.md
 @@ -131,7 +131,7 @@ kind: "package-reference"

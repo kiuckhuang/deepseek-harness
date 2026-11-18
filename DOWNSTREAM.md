@@ -20,7 +20,7 @@ The fork's own tooling — the `Makefile` targets, `sync_dsh.sh`, `mk_dsh.sh`, `
 
 `make sync` merges upstream's default branch and commits the regenerated layers. `make check` runs the same merge and layer verification without changing the working tree, and fails when the merge would conflict. `make release` builds the newest release tag plus every layer in a disposable worktree, leaving the caller's branch and index untouched.
 
-`make sandbox` installs bubblewrap on Linux, or confirms that the kernel enforces Landlock, then proves the runner actually confines a write outside the workspace. `make web`, `make desktop`, and `make dev-*` launch the built application; `make help` lists the forwarded arguments.
+`make sandbox` installs bubblewrap on Linux, or confirms that the kernel enforces Landlock, then proves the runner actually confines a write outside the workspace. `make web`, `make desktop`, and `make dev-*` launch the built application; `make help` lists the forwarded arguments. `make stop` stops the `make web` instance listening on `127.0.0.1:$PORT` (default 3080) after verifying the listener is the `dsh web` launcher, and `make restart` stops and relaunches through `make web`; a launch that overrides the port passes the same `PORT=` to both.
 
 ## Telemetry
 

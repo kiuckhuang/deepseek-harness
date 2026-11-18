@@ -1,10 +1,15 @@
 # Short names for the Web and Desktop application commands. The package.json
 # scripts they call stay the source of truth; docs/development.md documents both.
 .DEFAULT_GOAL := help
-.PHONY: help build clean web desktop dev-web dev-desktop sync check sandbox release telemetry-guard
+.PHONY: help build clean web desktop dev-web dev-desktop stop restart sync check sandbox release telemetry-guard
 
 PNPM ?= pnpm
 ARGS ?=
+
+# The Web instance serves 127.0.0.1:$(PORT); `dsh web` defaults to 3080. A
+# launch that overrides the port (`ARGS='--port 3081'`) needs the same value
+# here: make stop PORT=3081.
+PORT ?= 3080
 
 # Telemetry opt-out. The launcher treats any non-empty DSH_TELEMETRY_DISABLED
 # as opt-out and patches the session-telemetry row disabled before boot. The
@@ -52,6 +57,9 @@ help:
 	@echo "make build        pnpm run build           complete repository build"
 	@echo "make clean        pnpm run clean           remove build outputs and safe deleted-package residue"
 	@echo "make web          pnpm run start:web       serve the built Web artifacts from source"
+	@echo "make stop         stop the Web instance listening on 127.0.0.1:$(PORT) (idempotent)"
+	@echo "make restart      make stop, then make web — same telemetry guard and ARGS forwarding"
+	@echo "PORT=3081         select the instance port for stop/restart after ARGS='--port 3081'"
 	@echo "make desktop      pnpm run start:desktop   launch the built Desktop artifacts"
 	@echo "make dev-web      pnpm run dev:web         build, serve, and rebuild Web on source edits"
 	@echo "make dev-desktop  pnpm run dev:desktop     build, then launch Desktop"
@@ -71,6 +79,48 @@ clean:
 
 web: telemetry-guard
 	$(PNPM) run start:web $(ARGS)
+
+# Stop the Web instance `make web` started. The port's listener identifies the
+# instance, and the command line must name the `dsh web` launcher before any
+# signal is sent, so a foreign service on the port fails the recipe instead of
+# being killed. Idempotent: a free port reports already-stopped and succeeds,
+# which is what lets restart run stop unconditionally.
+stop:
+	@command -v ss >/dev/null 2>&1 || { echo "ERROR: make stop needs ss (iproute2) to find the Web instance"; exit 1; }; \
+	pids=$$(ss -tlnp "sport = :$(PORT)" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u); \
+	if [ -z "$$pids" ]; then \
+	  echo "make stop: nothing listens on 127.0.0.1:$(PORT); already stopped"; \
+	  exit 0; \
+	fi; \
+	for pid in $$pids; do \
+	  if ! tr '\0' ' ' < "/proc/$$pid/cmdline" 2>/dev/null | grep -q 'apps/cli/src/bin.ts web'; then \
+	    echo "ERROR: port $(PORT) belongs to a foreign process (pid $$pid); refusing to stop it"; \
+	    echo "  fix: pass the port the Web instance launched with, e.g. make stop PORT=3081"; \
+	    exit 1; \
+	  fi; \
+	done; \
+	echo "make stop: stopping the Web instance on 127.0.0.1:$(PORT) (pid$$(echo $$pids | sed 's/ /, pid/g'))"; \
+	kill -TERM $$pids 2>/dev/null || true; \
+	i=0; \
+	while [ $$i -lt 50 ] && ss -tln "sport = :$(PORT)" 2>/dev/null | grep -q ":$(PORT) "; do \
+	  sleep 0.2; i=$$((i + 1)); \
+	done; \
+	if ss -tln "sport = :$(PORT)" 2>/dev/null | grep -q ":$(PORT) "; then \
+	  echo "make stop: SIGTERM did not free the port in 10s; sending SIGKILL"; \
+	  kill -KILL $$pids 2>/dev/null || true; \
+	  sleep 1; \
+	fi; \
+	if ss -tln "sport = :$(PORT)" 2>/dev/null | grep -q ":$(PORT) "; then \
+	  echo "ERROR: something still listens on 127.0.0.1:$(PORT) after stop"; \
+	  exit 1; \
+	fi; \
+	echo "make stop: Web instance stopped"
+
+# Restart the Web instance: stop frees the port, then the `web` target relaunches
+# it in the foreground with its telemetry guard and the forwarded ARGS.
+restart:
+	@$(MAKE) --no-print-directory stop
+	@$(MAKE) --no-print-directory web ARGS='$(ARGS)'
 
 desktop: telemetry-guard
 	$(PNPM) run start:desktop $(ARGS)

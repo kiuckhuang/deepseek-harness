@@ -203,7 +203,7 @@ pnpm run start:desktop   # launch built Desktop artifacts
 pnpm run dev:desktop     # build, then launch Desktop
 ```
 
-Web 命令后面的参数会传给 `dsh web`，例如 `pnpm run dev:web --no-open --port 3081`；`dev:web` 还接受 `--skip-build` 复用现有产物树，以及 `--no-serve` 只运行重建 watcher、配合别处启动的服务器。两个 Web 命令使用正常的 Harness home，而 Desktop 命令使用 [Desktop README](../apps/desktop/README.zh.md) 描述的隔离开发 home。根目录 `Makefile` 以 `make web`、`make dev-web`、`make desktop`、`make dev-desktop` 和 `make build` 命名同一套命令；`ARGS='--no-open'` 用于转发参数。
+Web 命令后面的参数会传给 `dsh web`，例如 `pnpm run dev:web --no-open --port 3081`；`dev:web` 还接受 `--skip-build` 复用现有产物树，以及 `--no-serve` 只运行重建 watcher、配合别处启动的服务器。两个 Web 命令使用正常的 Harness home，而 Desktop 命令使用 [Desktop README](../apps/desktop/README.zh.md) 描述的隔离开发 home。根目录 `Makefile` 以 `make web`、`make dev-web`、`make desktop`、`make dev-desktop` 和 `make build` 命名同一套命令；`ARGS='--no-open'` 用于转发参数。下游 fork 的 `Makefile` 还为 `make web` 实例提供 `make stop` 和 `make restart`：`stop` 终止监听 `127.0.0.1:$PORT`（默认 3080）的进程，先验证它是 `dsh web` 启动器，端口被外部进程占用时拒绝操作，无进程监听时直接成功；`restart` 经由 `make web` 停止并重新启动。覆盖端口的启动需要两侧传同一值，例如 `ARGS='--port 3081'` 配 `PORT=3081`。
 
 ### TODO 标记
 

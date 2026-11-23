@@ -1,5 +1,5 @@
 diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-index 0947c09863..627af8c11b 100644
+index 6f35dc0f3d..6fa60b78d5 100644
 --- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 @@ -143,6 +143,40 @@ describe('llm-pi-ai real dormant composition', () => {

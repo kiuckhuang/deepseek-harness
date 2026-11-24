@@ -29,26 +29,30 @@ The `Makefile` exports `DSH_TELEMETRY_DISABLED=1` for every recipe and runs `tel
 
 ## Prefix-cache reuse on self-hosted DS4
 
-[`packages/llm/llm-pi-ai/diagnostics/prefix-cache-probe.mjs`](packages/llm/llm-pi-ai/diagnostics/prefix-cache-probe.mjs) measures the KV-prefix rule an endpoint applies (`rules`), records request bodies byte-for-byte through a logging proxy (`capture`), and reports where two captured requests first diverge (`diff`). It reads `usage.prompt_tokens_details.cached_tokens`, which Project Maya, vLLM with automatic prefix caching, and llama.cpp servers report per request. The Harness reports nothing equivalent on these routes: pi-ai's `openai-completions` parser leaves `Usage.cacheRead` at zero, so `mapUsage` omits `cacheReadTokens` and a session that re-prefills its whole context looks identical to one that reuses it.
+[`packages/llm/llm-pi-ai/diagnostics/prefix-cache-probe.mjs`](packages/llm/llm-pi-ai/diagnostics/prefix-cache-probe.mjs) measures the KV-prefix rule an endpoint applies (`rules`), records request bodies byte-for-byte through a logging proxy (`capture`), and reports where two captured requests first diverge (`diff`). It reads `usage.prompt_tokens_details.cached_tokens`, which Project Maya, vLLM with automatic prefix caching, and llama.cpp servers report per request.
 
-Measured against `deepseek-v4.1-flash`:
+Reuse is already visible in-product where the endpoint reports it: pi-ai's `parseChunkUsage` reads `prompt_tokens_details.cached_tokens`, `prompt_cache_hit_tokens`, and `cached_tokens` into `cacheRead`, and [`llm-pi-ai/src/stream.ts`](packages/llm/llm-pi-ai/src/stream.ts) maps that to `cacheReadTokens`. A recorded `0` is therefore ambiguous: it can be a true miss, or an endpoint that sent no cache detail at all. The dgx-32 vLLM route returns `usage` without `prompt_tokens_details`, so every request there records no cache figure even while the engine's own `vllm:prefix_cache_hits_total` shows hits; `rules` separates the two cases.
+
+Measured against `deepseek-v4.1-flash`, which does report:
 
 | Change from the previous request | Reused | Cost |
 |---|---|---|
-| Unchanged, or the previous prompt plus one new tail turn | 99.9% | about 0.1 s at 28k tokens |
+| Unchanged, or the previous prompt plus one new tail turn | 99.9% | about 0.1 s at 216k tokens |
 | One character changed anywhere in the system message, including its last character | 0 | full re-read: 36-45 s at 162k tokens |
 | One character changed in any tool description, or two declarations swapped | 0 | full re-read |
 | `reasoning_effort` changed | 0 | full re-read |
 | `temperature`, `top_p`, `max_tokens`, `enable_thinking`, `user`, `session_id`, `prompt_cache_key` | 99.9% | none |
 
-The engine keeps a restore point at the end of the rendered system-and-tools header (5470 tokens for the `standard` preset, 7361 for PTC) and at the end of the previous prompt. Reuse is content-addressed: it survives a new TCP connection, and separate conversations interleaved request by request keep their own points, so no session or conversation field is needed and this endpoint ignores the ones OpenAI defines. A change after the header costs the tail; a change inside it costs the whole conversation.
+The engine keeps a restore point at the end of the rendered system-and-tools header (5470 tokens for the `standard` preset, 7361 for PTC) and at the end of the previous prompt. Reuse is content-addressed: it survives a new TCP connection, and separate conversations interleaved request by request keep their own points, so no session or conversation field is needed and this endpoint ignores the ones OpenAI defines. A change after the last restore point costs the tail; a change inside the header costs the whole conversation.
 
-Harness requests satisfy that rule in steady state. Eight consecutive PTC requests of a web-profile session, carrying a 78,896-character header, 22 registered tools rendered into it, a background job, and a read, were header-identical and append-only, and reused 99.9%. Sessions that never reuse are sessions whose header text changed between steps. Two paths do that: rebuilding or hot-reloading the running harness under a live Session, because the committed header carries `tools:sdk` rendered from the live registry ([`tool-executor-ptc/src/index.ts:30`](packages/core/tool-executor-ptc/src/index.ts)) and tool description text moves between builds; and switching provider, model, or thinking level inside one Session, which re-commits `deployment:persona-prefix` and re-templates the prompt. Both cost a full re-prefill of the entire context, so the price scales with Session length rather than with the edit.
+Ordinary operation therefore reuses. Two live Sessions measured 217k-245k and 250k-266k reused tokens per request with only tens to thousands of new tokens, and resuming a Session in a fresh process reused 12481 of 12493 tokens. A full re-read of the conversation happens when the cached prefix is gone or has changed:
 
-Two follow-ups are deliberately not taken here; each needs its own change and evidence.
+- The harness is rebuilt under a live Session and the rendered `tools:sdk` text differs, because that section carries the live registry ([`tool-executor-ptc/src/index.ts:30`](packages/core/tool-executor-ptc/src/index.ts)) and tool descriptions move between builds.
+- The provider or model changes to a different engine, which leaves the previous engine's prefix behind.
+- A Session sits idle long enough for the engine to evict the prefix; one observed Session resumed after 2.5 hours and read 216k tokens once before reusing again.
+- A legacy head carries no `source.sections`, so [`system-prompt/src/projection.ts:49`](packages/core/system-prompt/src/projection.ts) marks a rebuild and rewrites the whole head. Sessions written by older builds contain such heads; each restore pays one full re-read until the rebuild writes a sectioned head.
 
-- Report reuse in-product: preserve `prompt_tokens_details.cached_tokens` into `Usage.cacheRead` in the pinned dependency patch [`patches/@earendil-works__pi-ai@1.3.0.patch`](patches/@earendil-works__pi-ai@1.3.0.patch). [`llm-pi-ai/src/stream.ts`](packages/llm/llm-pi-ai/src/stream.ts) already maps `cacheRead` to `cacheReadTokens`, so no other package changes. Applying it needs a full `pnpm install`, which is unsafe beside live Sessions.
-- Keep header mutations out of the cached prefix: [`llm-pi-ai/src/models.ts`](packages/llm/llm-pi-ai/src/models.ts) grants in-history system and tool updates only from `compat.supportsMidConvoSystemMessages` and `compat.supportsMidConvoToolAdditions`, and [`llm-pi-ai/src/catalog.ts`](packages/llm/llm-pi-ai/src/catalog.ts) marks both `withhold`, so a self-hosted endpoint cannot declare them and every tool-set change rewrites the `tools` array through [`llm/src/content.ts`](packages/llm/llm/src/content.ts). Maya does accept mid-conversation `system` messages, but the pinned pi-ai build has no consumer for in-history tool additions, so offering that flag today would hide newly registered tools from the model.
+The remaining follow-up is the last item: a restore should not rewrite a head whose committed text already matches. Fixing it means distinguishing a legacy whole-prompt head (content, no sections, rebuild) from a current empty placeholder (no content, no sections, no-op), which changes admission semantics and needs its own tests.
 
 ## Keeping the branch clean
 

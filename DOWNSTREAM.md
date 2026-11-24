@@ -14,6 +14,7 @@ A layer covers the files it already names, and every layer is verified against t
 | `dsh_mcp.patch` | Re-initializes a Streamable HTTP MCP session that the server dropped while the connection stayed open |
 | `dsh_sandbox.patch` | Model-visible sandbox-unavailable text that names host capability instead of cueing an escalation |
 | `dsh_cache.patch` | Prefix-cache probe for self-hosted DS4-compatible endpoints: measures which request fields the engine caches, and names the first divergence between two captured requests |
+| `dsh_auto_review.patch` | Bounds the Auto review reviewer request to retained history, so a long Session no longer re-sends a Session-sized prompt on every tool call |
 
 The fork's own tooling — the `Makefile` targets, `sync_dsh.sh`, `mk_dsh.sh`, `setup_sandbox.sh`, the layers, this document, and the Agent Notes under `.agents/notes/implemented/process/` — is branch-only and is not part of any layer, because a release build does not need it.
 
@@ -53,6 +54,14 @@ Ordinary operation therefore reuses. Two live Sessions measured 217k-245k and 25
 - A legacy head carries no `source.sections`, so [`system-prompt/src/projection.ts:49`](packages/core/system-prompt/src/projection.ts) marks a rebuild and rewrites the whole head. Sessions written by older builds contain such heads; each restore pays one full re-read until the rebuild writes a sectioned head.
 
 The remaining follow-up is the last item: a restore should not rewrite a head whose committed text already matches. Fixing it means distinguishing a legacy whole-prompt head (content, no sections, rebuild) from a current empty placeholder (no content, no sections, no-op), which changes admission semantics and needs its own tests.
+
+## Auto review prompt size
+
+Auto review reviews every native and PTC inner tool call with an extra model request whose prompt embeds the Session's action history. Unbounded, that prompt tracked the Session: an 11.9k-token review beside a 12k-token Session, and the 148k-token reviews measured against 148k Sessions that reported 37-47 s of re-prefill per call. The requests themselves were cache-friendly — captured bodies replayed at 100% reuse, and header, tools, and request fields stayed byte-identical — so the cost was the extra Session-sized prompt, not an unstable prefix.
+
+[`packages/experimental/auto-review/src/index.ts`](packages/experimental/auto-review/src/index.ts) now retains the newest items within `maxHistoryEntries` (default 32) and `maxHistoryChars` (default 32768), always keeps the pending call and the schema item directly before it, and summarizes the rest in one `elided` item carrying dropped counts and tool names. Measured on one task: 10.9k-11.9k review tokens unbounded, 5.8k-6.5k at the defaults, 1.7k-2.2k at an 8-entry bound. The main Session's reuse was unaffected in every run.
+
+The trade is in the reviewer's own reuse: once its window slides, its request diverges at the elision item, so the reviewer restarts its own prefix instead of extending it. A bounded prompt that may miss is cheaper than a Session-sized prompt that hits.
 
 ## Keeping the branch clean
 

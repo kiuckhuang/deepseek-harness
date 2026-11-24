@@ -1,0 +1,205 @@
+#!/usr/bin/env node
+/**
+ * Prefix-cache probe for OpenAI-compatible inference endpoints that report
+ * `usage.prompt_tokens_details.cached_tokens` (Project Maya / DS4, vLLM APC, llama.cpp).
+ *
+ * Modes:
+ * - rules   Which request fields the engine counts as cached prompt prefix. Each row
+ *           warms a baseline, mutates one field, and prints the reuse the mutated request
+ *           got. `cached 0` means the mutation entered the cached header: the whole
+ *           conversation is re-prefilled, not just the changed part.
+ * - capture Byte-exact logging reverse proxy; writes one JSON file per request body and
+ *           prints the upstream prompt/cached token counts next to each request number.
+ * - diff    Reads a capture directory and reports, per consecutive request pair, whether
+ *           the header (system text or tools) changed, which earlier message was rewritten,
+ *           or that the request was a clean append-only extension.
+ *
+ * Usage:
+ *   node packages/llm/llm-pi-ai/diagnostics/prefix-cache-probe.mjs rules   --base http://h:38041/v1 --key MAYA_KEY --model deepseek-v4.1-flash
+ *   node packages/llm/llm-pi-ai/diagnostics/prefix-cache-probe.mjs capture --upstream http://h:38041 --port 38999 --out /tmp/probe
+ *   node packages/llm/llm-pi-ai/diagnostics/prefix-cache-probe.mjs diff /tmp/probe
+ *
+ * `--key` names an environment variable; the key itself is never read from argv.
+ */
+import fs from 'node:fs'
+import http from 'node:http'
+import path from 'node:path'
+
+const PAD = 'The quick brown fox jumps over the lazy dog while the sensor logs each calibration reading. '
+const SYSTEM = `You are a terse assistant. Reply OK.\n${PAD.repeat(40)}`
+const TOOLS = [
+  { type: 'function', function: { name: 'alpha_tool', description: 'Alpha tool description', parameters: { type: 'object', properties: { a: { type: 'string' } } } } },
+  { type: 'function', function: { name: 'beta_tool', description: 'Beta tool description', parameters: { type: 'object', properties: { b: { type: 'string' } } } } },
+]
+
+function parseArgs(argv) {
+  const args = { _: [] }
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i]
+    if (!token.startsWith('--')) args._.push(token)
+    else args[token.slice(2)] = argv[i + 1] ?? true
+  }
+  return args
+}
+
+function readKey(spec) {
+  if (typeof spec !== 'string' || spec.length === 0) throw new Error('--key names the environment variable holding the API key')
+  const value = process.env[spec] ?? (spec.length > 40 ? spec : undefined)
+  if (value === undefined) throw new Error(`environment variable ${spec} is not set`)
+  return value
+}
+
+async function chat(endpoint, key, body) {
+  const started = Date.now()
+  const response = await fetch(`${endpoint}/chat/completions`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const text = await response.text()
+  let json = null
+  try { json = JSON.parse(text) } catch { json = null }
+  const usage = json?.usage
+  return {
+    ms: Date.now() - started,
+    error: usage ? null : text.slice(0, 140),
+    prompt: usage?.prompt_tokens ?? null,
+    cached: usage?.prompt_tokens_details?.cached_tokens ?? null,
+  }
+}
+
+const baseline = model => ({ model, stream: false, max_tokens: 8, temperature: 1, top_p: 1, messages: [
+  { role: 'system', content: SYSTEM }, { role: 'user', content: 'alpha' },
+  { role: 'assistant', content: 'OK' }, { role: 'user', content: 'beta' } ] })
+
+const VARIANTS = [
+  ['same request again', () => undefined],
+  ['system first character changed', b => { b.messages[0].content = 'X' + b.messages[0].content.slice(1) }],
+  ['system last character changed', b => { const c = b.messages[0].content; b.messages[0].content = c.slice(0, -1) + '!' }],
+  ['system trailing newline added', b => { b.messages[0].content += '\n' }],
+  ['one earlier message rewritten', b => { b.messages[1].content = 'alphA' }],
+  ['tail message changed', b => { b.messages[3].content = 'Changed only the final turn.' }],
+  ['first tool description changed', b => { b.tools = structuredClone(TOOLS); b.tools[0].function.description += 'Z' }],
+  ['last tool description changed', b => { b.tools = structuredClone(TOOLS); b.tools.at(-1).function.description += 'Z' }],
+  ['tool order swapped', b => { b.tools = structuredClone(TOOLS).reverse() }],
+  ['temperature changed', b => { b.temperature = 0.7 }],
+  ['top_p changed', b => { b.top_p = 0.9 }],
+  ['max_tokens changed', b => { b.max_tokens = 64 }],
+  ['reasoning_effort changed', b => { b.reasoning_effort = 'low' }],
+  ['enable_thinking changed', b => { b.enable_thinking = false }],
+  ['user field changed', b => { b.user = 'probe-B' }],
+  ['session_id field added', b => { b.session_id = 'probe-1' }],
+  ['prompt_cache_key added', b => { b.prompt_cache_key = 'probe-1' }],
+]
+
+async function rules(args) {
+  const endpoint = args.base ?? 'http://127.0.0.1:8080/v1'
+  const key = readKey(args.key)
+  const model = args.model ?? 'deepseek-v4.1-flash'
+  console.log(`endpoint ${endpoint} model ${model}`)
+  console.log('\\nvariant                          prompt   cached   reuse  cost')
+  let headerTokens = null
+  for (const [name, mutate] of VARIANTS) {
+    await chat(endpoint, key, baseline(model))
+    const probe = baseline(model)
+    mutate(probe)
+    const result = await chat(endpoint, key, probe)
+    if (name === 'tail message changed') headerTokens = result.cached
+    const ratio = result.prompt && result.cached !== null ? ((result.cached / result.prompt) * 100).toFixed(1) + '%' : '-'
+    console.log(`${name.padEnd(31)} ${String(result.prompt ?? 'err').padStart(6)} ${String(result.cached ?? 'err').padStart(7)} ${ratio.padStart(8)}`
+      + `  ${result.cached === 0 ? 'FULL RE-PREFILL' : 'partial'} ${result.error ?? ''}`)
+  }
+  console.log(`\n\"tail message changed\" reuses up to the end of the system + tools header, about ${headerTokens} tokens here.`)
+  console.log('A variant reusing less than that baseline mutated the cached header, so the whole conversation is re-read.')
+  console.log('Run --model against a real deployment: reuse rounds down to 0 at small prompt sizes, so read the gap, not the sign.')
+  void model
+}
+
+function firstDivergence(a, b) {
+  const n = Math.min(a.length, b.length)
+  let i = 0
+  while (i < n && a[i] === b[i]) i += 1
+  return i
+}
+const contentOf = m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''))
+const show = (label, a, b, at) => {
+  console.log(`  ${label} diverges at char ${at}`)
+  console.log(`    was ${JSON.stringify(a.slice(Math.max(0, at - 60), at + 120))}`)
+  console.log(`    now ${JSON.stringify(b.slice(Math.max(0, at - 60), at + 120))}`)
+}
+
+function diff(args) {
+  const dir = args._[0]
+  if (!dir) throw new Error('diff needs a capture directory')
+  const files = fs.readdirSync(dir).filter(f => /^req-[0-9]+[.]json$/.test(f)).sort()
+  const loads = files.map(f => ({ f, j: JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) }))
+  for (let i = 1; i < loads.length; i += 1) {
+    const a = loads[i - 1], b = loads[i]
+    const ma = a.j.messages ?? [], mb = b.j.messages ?? []
+    const sysA = String(ma[0]?.content ?? ''), sysB = String(mb[0]?.content ?? '')
+    const toolsA = JSON.stringify(a.j.tools ?? []), toolsB = JSON.stringify(b.j.tools ?? [])
+    const headSame = sysA === sysB && toolsA === toolsB
+    console.log(`${a.f} -> ${b.f}: messages ${ma.length}->${mb.length} header ${headSame ? 'UNCHANGED (cache-safe)' : 'CHANGED (full re-prefill)'}`)
+    if (sysA !== sysB) show('system text', sysA, sysB, firstDivergence(sysA, sysB))
+    if (toolsA !== toolsB) {
+      const names = t => (t ?? []).map(x => x.name ?? x.function?.name).join(',')
+      console.log(`  tools changed: [${names(a.j.tools)}] -> [${names(b.j.tools)}]`)
+      show('tools', toolsA, toolsB, firstDivergence(toolsA, toolsB))
+    }
+    let index = 0
+    while (index < Math.min(ma.length, mb.length) && ma[index].role === mb[index].role && contentOf(ma[index]) === contentOf(mb[index])) index += 1
+    if (index < Math.min(ma.length, mb.length)) {
+      const x = contentOf(ma[index]), y = contentOf(mb[index])
+      console.log(`  history rewritten at message ${index} (role ${ma[index].role}); everything from there on is re-prefilled`)
+      show('content', x, y, firstDivergence(x, y))
+    } else {
+      console.log(`  append-only: ${mb.length - index} new message(s) after the shared prefix`)
+    }
+    for (const field of new Set([...Object.keys(a.j), ...Object.keys(b.j)])) {
+      if (field === 'messages' || field === 'tools') continue
+      const x = JSON.stringify(a.j[field]), y = JSON.stringify(b.j[field])
+      if (x !== y) console.log(`  field ${field}: ${x} -> ${y}`)
+    }
+  }
+}
+
+function capture(args) {
+  const upstream = args.upstream
+  if (!upstream) throw new Error('capture needs --upstream http://host:port')
+  const port = Number(args.port ?? 38999)
+  const out = args.out ?? '/tmp/dsh-cache-probe'
+  fs.mkdirSync(out, { recursive: true })
+  let n = 0
+  http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', c => chunks.push(c))
+    req.on('end', () => {
+      const body = Buffer.concat(chunks)
+      const index = (n += 1)
+      const file = path.join(out, `req-${String(index).padStart(3, '0')}.json`)
+      fs.writeFileSync(file, body)
+      const target = new URL(upstream)
+      const proxy = http.request({ host: target.hostname, port: target.port, path: req.url, method: req.method,
+        headers: { ...req.headers, host: target.host, 'content-length': String(body.length) } }, up => {
+        res.writeHead(up.statusCode, up.headers)
+        up.setEncoding('utf8')
+        let tail = ''
+        up.on('data', d => { res.write(d); tail = (tail + d).slice(-60000) })
+        up.on('end', () => {
+          const hit = tail.match(/"prompt_tokens":(\\d+)[\\s\\S]*?"cached_tokens":(\\d+)/)
+          console.log(`#${index} ${path.basename(file)} prompt=${hit?.[1] ?? '?'} cached=${hit?.[2] ?? '?'}`)
+          res.end()
+        })
+      })
+      proxy.on('error', e => { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: String(e) } })) })
+      proxy.end(body)
+    })
+  }).listen(port, () => console.log(`logging proxy http://127.0.0.1:${port} -> ${upstream}; captures in ${out}`))
+}
+
+const args = parseArgs(process.argv.slice(2))
+const mode = args._.shift() ?? ''
+if (mode === 'rules') await rules(args)
+else if (mode === 'diff') diff(args)
+else if (mode === 'capture') capture(args)
+else console.log('modes: rules | capture --upstream URL [--port n] [--out dir] | diff <dir>')

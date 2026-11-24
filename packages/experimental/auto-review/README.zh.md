@@ -102,15 +102,15 @@ Reviewer 以固定策略作为 system prompt，随后依次发送：一条仅含
 
 #### 模型看到什么
 
-Reviewer 使用最新 `request/header.config` 的 provider 与模型，并沿用 shipped adapter 默认 reasoning。固定 `REVIEW_POLICY` 替代恰好一个动作的人工审批：allow 后立即以 Full access 执行。这些 user 消息只包含上文列出的保留事实。响应为一个严格 JSON text 对象，包含 `risk` 与 `decision`；deny 可附字符串 `reason`。Reasoning blocks 可以位于这唯一 text block 之前。只有 `low + allow`、`medium + allow/deny` 和 `high + deny` 合法。
+Reviewer 使用最新 `request/header.config` 的 provider 与模型，并沿用 shipped adapter 默认 reasoning。固定 `REVIEW_POLICY` 替代恰好一个动作的人工审批：allow 后立即以 Full access 执行。这些 user 消息只包含上文列出的保留事实；保留条目受 `maxHistoryEntries` 与 `maxHistoryChars` 配置上限约束：待审调用及其紧邻的 schema 条目始终保留，请求省略的较早条目由一个 `elided` 条目报告其数量与工具名。响应为一个严格 JSON text 对象，包含 `risk` 与 `decision`；deny 可附字符串 `reason`。Reasoning blocks 可以位于这唯一 text block 之前。只有 `low + allow`、`medium + allow/deny` 和 `high + deny` 合法。
 
 #### Token 影响
 
-每个受支持调用额外产生一次模型请求，不缓存、重试、截断、压缩，也不设单独的小型输出预算。超窗请求以 provider 错误使调用失败。
+每个受支持调用额外产生一次模型请求，不重试、不压缩，也不设单独的小型输出预算。其大小由 `maxHistoryEntries`（默认 32）与 `maxHistoryChars`（默认 32768）限制，因此长 Session 不会把全部动作历史带进每次评审；待审调用始终保留，较早条目收缩为一个省略条目。超窗请求以 provider 错误使调用失败。
 
 #### KV Cache 影响
 
-每次评审的消息都以上一次评审的全部消息（包括其待审调用）开头，因此按 prompt 前缀、按消息结尾或在末尾标记处回溯缓存的路由都能复用策略与先前历史。Compaction、cwd 变化、较早条目离开 surface，以及重启后的第一次评审会让复用中断一次。Auto 不向主 agent 增加专门 runtime context 或模式切换提示词。每个评审请求都携带被评审 Session 的 `sessionId` 和 `purpose: 'auto-review'`，作为模型不可见的传输元数据。按 Session 划分 prompt 缓存或请求路由的路由（例如 OpenAI 的 `prompt_cache_key`，以及 OpenCode 要求的 `x-opencode-session` header）会以该 Session 的键发送评审；[DeepSeek session-log 上传](../../session/session-log-deepseek/README.zh.md#request-field)在启用且没有已注册排除条件匹配时贡献权威 Session 日志。
+每次评审的策略与环境消息逐字节稳定，保留历史维持 Session 顺序，因此按 prompt 前缀、按消息结尾或在末尾标记处回溯缓存的路由都能复用策略与保留的后缀。若某次请求丢弃了上一次评审保留的条目，其自身复用从省略条目处重新开始，这是大小上限的代价。Compaction、cwd 变化、较早条目离开 surface，以及重启后的第一次评审会让复用中断一次。Auto 不向主 agent 增加专门 runtime context 或模式切换提示词。每个评审请求都携带被评审 Session 的 `sessionId` 和 `purpose: 'auto-review'`，作为模型不可见的传输元数据。按 Session 划分 prompt 缓存或请求路由的路由（例如 OpenAI 的 `prompt_cache_key`，以及 OpenCode 要求的 `x-opencode-session` header）会以该 Session 的键发送评审；[DeepSeek session-log 上传](../../session/session-log-deepseek/README.zh.md#request-field)在启用且没有已注册排除条件匹配时贡献权威 Session 日志。
 
 ### 工具拒绝
 
